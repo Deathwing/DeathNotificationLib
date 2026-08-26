@@ -1,5 +1,10 @@
 # Changelog
 
+## V28 — 2026-08-27
+
+### Bug Fixes
+- Fixed an issue with automatically joining the Blizzard Hardcore Deaths channel
+
 ## V27 — 2026-08-12
 
 ### Improvements

@@ -93,10 +93,29 @@ end
 -- Channel management
 ---------------------------------------------------------------------------
 
+--- Blizzard's _G.HARDCORE_DEATHS is the localized *display* label for the
+--- Hardcore death channel ("Hardcore Deaths", with a space on enUS). It is NOT a
+--- valid argument to JoinChannelByName — a channel name containing a space is
+--- rejected (the call returns nil) and the channel is never joined. The joinable
+--- identifier is the space-free name EnumerateServerChannels reports
+--- ("HardcoreDeaths"); match on the space-stripped, lower-cased form so this
+--- stays correct across locales.
+local function resolveHardcoreDeathsChannel()
+	local displayName = _G["HARDCORE_DEATHS"]
+	if not displayName or not EnumerateServerChannels then return nil end
+	local want = displayName:gsub("%s", ""):lower()
+	for _, name in ipairs({ EnumerateServerChannels() }) do
+		if name:gsub("%s", ""):lower() == want then
+			return name
+		end
+	end
+	return nil
+end
+
 --- Re-check CVars, Blizzard Hardcore death channel membership, and keep our
 --- addon channels hidden on every zone change so nothing drifts.
 local function updateChannels()
-	local channelName = _G["HARDCORE_DEATHS"]
+	local channelName = resolveHardcoreDeathsChannel()
 
 	if channelName and _dnl.anyAddonEnables("auto_blizzard_deaths") then
 		if GetChannelName(channelName) == 0 then
