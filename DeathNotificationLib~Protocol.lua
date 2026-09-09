@@ -756,6 +756,17 @@ function _dnl.normalize(name)
 	return name:match("^([^-]+)") or name
 end
 
+_dnl.send_muted = false
+local send_muted_at = 0
+local MUTE_RETRY_COOLDOWN = 300
+
+function _dnl.setSendMuted(muted)
+	muted = muted == true
+	if _dnl.send_muted == muted then return end
+	_dnl.send_muted = muted
+	send_muted_at = muted and GetServerTime() or 0
+end
+
 --- Send a chat message on a numbered channel, respecting ChatThrottleLib
 --- bandwidth budget.  Bypasses CTL:SendChatMessage (which defers CHANNEL
 --- sends out of hardware-event context, breaking Classic restrictions)
@@ -763,7 +774,8 @@ end
 --- _G.SendChatMessage.
 ---
 --- Returns true if the message was sent, false if the bandwidth budget
---- was exhausted or the pcall failed.
+--- was exhausted, the server has us muted (CHAT_MSG_CHANNEL_NOTICE
+--- "MUTED"), or the pcall failed.
 ---@param text string         Full chat message text
 ---@param channel_num number  Channel index from GetChannelName()
 ---@return boolean sent
@@ -776,6 +788,12 @@ function _dnl.safeSendChannel(text, channel_num)
 		if CTL.bQueueing or cost >= avail then
 			return false
 		end
+	end
+	if _dnl.send_muted then
+		if (GetServerTime() - send_muted_at) < MUTE_RETRY_COOLDOWN then
+			return false
+		end
+		_dnl.setSendMuted(false)
 	end
 	local ok, err = pcall(C_ChatInfo.SendChatMessage, text, "CHANNEL", nil, channel_num)
 	if not ok and _dnl.DEBUG then

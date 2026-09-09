@@ -19,7 +19,7 @@
 ## Category-ruRU: Библиотеки
 ## Category-zhCN: 函数库
 ## Category-zhTW: 函式庫
-## Version: 28
+## Version: 29
 # UNCOMMENT_NEXT_LINE
 # ## OptionalDeps: DeathNotificationLibData, ProfanityLib
 

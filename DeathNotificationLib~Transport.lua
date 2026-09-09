@@ -91,13 +91,25 @@ function _dnl.deathlogJoinChannel()
 			return
 		end
 		remaining_attempts = remaining_attempts - 1
-		_dnl.death_alerts_channel = _dnl.death_alerts_channel .. "b"
+		_dnl.death_alerts_channel = _dnl.DEATH_ALERTS_CHANNEL_BASE .. "b"
 		if _dnl.DEBUG then
 			print("Couldn't join main deathlog channel; joining backup")
 		end
 		JoinChannelByName(_dnl.death_alerts_channel, DEATH_ALERTS_CHANNEL_PW, nil, false)
 	end)
 end
+
+local mute_frame = CreateFrame("Frame")
+mute_frame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
+mute_frame:SetScript("OnEvent", function(_, _, notice, _, _, _, _, _, _, channelIndex, channelBaseName)
+	if notice ~= "MUTED" then return end
+	for _, name in ipairs({ _dnl.death_alerts_channel, _dnl.sync_channel }) do
+		if name and (channelBaseName == name or channelIndex == GetChannelName(name)) then
+			_dnl.setSendMuted(true)
+			return
+		end
+	end
+end)
 
 local function sendChatMessageDebug(prefix, text)
 	print(string.format("|cffFF6600[DNL DEBUG]|r Would send message with prefix %s: %s", prefix, text))

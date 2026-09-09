@@ -1,5 +1,11 @@
 # Changelog
 
+## V29 — 2026-09-09
+
+### Bug Fixes
+- **Muted accounts no longer spam the send queue.** A brand-new account can be silenced in custom chat channels for its first few days. Joining the death-alert and sync channels still works, but every message is rejected by the server with a "muted" notice, and the library kept treating those sends as successful and retrying every few seconds. It now recognises the notice for its own channels, keeps the queued messages, waits five minutes between attempts, and resumes on its own once the mute is lifted.
+- **One fixed backup channel.** When the main death-alert or sync channel could not be joined, every retry appended another `b` to the backup channel's name, so two players who failed a different number of times ended up in different channels and never saw each other. Both fallbacks now use a single fixed backup channel.
+
 ## V28 — 2026-08-27
 
 ### Bug Fixes

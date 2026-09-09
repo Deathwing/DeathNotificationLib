@@ -1196,7 +1196,7 @@ function _dnl.joinSyncChannel()
 			return
 		end
 		remaining = remaining - 1
-		channel_name = channel_name .. "b"
+		channel_name = _dnl.SYNC_CHANNEL_BASE .. "b"
 		JoinChannelByName(channel_name, SYNC_CHANNEL_PW, nil, false)
 	end)
 end
