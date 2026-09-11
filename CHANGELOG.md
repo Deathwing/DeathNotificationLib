@@ -1,5 +1,10 @@
 # Changelog
 
+## V30 - 2026-09-11
+
+### Bug Fixes
+- **Stable death-alert owner.** `getDeathAlertOwnerSettings` picked the owner by `pairs()` order whenever two attached addons had the same `death_alert_priority`, so a helper addon that attached with only `{ addonless_logging = true }` could win over the addon whose SavedVariables hold the alert settings. The DeathAlert widget then read and wrote the helper's throwaway table (settings reset on every reload) and registered its options under a fallback "DeathNotificationLib" category. Addons without an explicit priority now rank 0 when their settings carry a `DeathAlert` sub-table and -1 otherwise, and equal ranks are broken by addon name so the owner is the same every session.
+
 ## V29 — 2026-09-09
 
 ### Bug Fixes

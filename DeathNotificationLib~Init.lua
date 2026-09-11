@@ -2,7 +2,7 @@
 DeathNotificationLib~Init.lua
 --]]
 
-local VERSION = 29
+local VERSION = 30
 
 if DeathNotificationLib and (DeathNotificationLib.VERSION or 0) >= VERSION then return end
 
@@ -238,7 +238,7 @@ _dnl.tag_to_addon = {}
 ---@field sync_interval number|nil Watermark broadcast interval in seconds (default 300)
 ---@field sync_max_entries number|nil Max entries streamed per sync session (default 500)
 ---@field sync_cooldown number|nil Cooldown between sync sessions in seconds (default 300)
----@field death_alert_priority number|nil Higher number wins when multiple addons provide settings (default 0)
+---@field death_alert_priority number|nil Higher number wins when multiple addons provide settings (unset: 0 if a DeathAlert sub-table is present, else -1; ties broken by addon name)
 ---@field DeathAlert DNL_DeathAlertSettings|nil Sub-table consumed by ~DeathAlert.lua (auto-populated with defaults)
 
 --- Settings sub-table for the built-in Death Alert widget.
@@ -313,6 +313,9 @@ function _dnl.anyAddonEnables(key)
 end
 
 --- Return the settings table and addon name from the addon with the highest death_alert_priority.
+--- Addons without an explicit priority rank 0 when their settings already
+--- carry a DeathAlert sub-table and -1 otherwise; equal ranks are broken by
+--- addon name so the result is stable across sessions.
 --- Used ONLY by the DeathAlert widget to read/write its sub-table.
 --- Returns nil, nil if no addon has settings.
 ---@return DNL_Settings|nil settings
@@ -320,14 +323,27 @@ end
 function _dnl.getDeathAlertOwnerSettings()
 	local best_settings = nil
 	local best_name = nil
-	local best_prio = -math.huge
-	for _, addon in pairs(_dnl.addons) do
-		if addon.settings then
-			local p = addon.settings.death_alert_priority or 0
-			if p > best_prio then
+	local best_prio = nil
+	for name, addon in pairs(_dnl.addons) do
+		local s = addon.settings
+		if s then
+			-- An explicit death_alert_priority always wins. Without one, an
+			-- addon that ships a DeathAlert sub-table (it actually configures
+			-- the alert, and its SavedVariables hold the player's choices)
+			-- ranks above an addon that only attached with unrelated settings,
+			-- e.g. { addonless_logging = true }. Otherwise a helper addon could
+			-- become the owner by pairs() luck, the widget would read/write its
+			-- throwaway table, and every alert setting reset on /reload.
+			local p = s.death_alert_priority
+			if p == nil then
+				p = (type(s.DeathAlert) == "table") and 0 or -1
+			end
+			-- Equal ranks tie-break by addon name so the owner never changes
+			-- between sessions (pairs() order is not stable).
+			if best_prio == nil or p > best_prio or (p == best_prio and name < best_name) then
 				best_prio = p
-				best_settings = addon.settings
-				best_name = addon.name
+				best_settings = s
+				best_name = name
 			end
 		end
 	end
