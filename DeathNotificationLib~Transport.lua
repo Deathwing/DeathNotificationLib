@@ -71,10 +71,21 @@ end
 
 function _dnl.deathlogJoinChannel()
 	_dnl.death_alerts_channel = _dnl.DEATH_ALERTS_CHANNEL_BASE
-	LeaveChannelByName(_dnl.death_alerts_channel)
+
+	-- Never leave and rejoin. WoW restores custom channels from the chat
+	-- cache at login, so the channel normally already holds its slot;
+	-- leaving frees that slot and the rejoin lands in the lowest free one,
+	-- which outside a city is Trade's. That pushed General/Trade to 4-6
+	-- for players and persisted in their chat cache.
+	if GetChannelName(_dnl.death_alerts_channel) ~= 0 then
+		_dnl.hideChannelFromChatFrames(_dnl.death_alerts_channel)
+		return
+	end
 
 	C_Timer.After(3.0, function()
-		JoinChannelByName(_dnl.death_alerts_channel, DEATH_ALERTS_CHANNEL_PW, nil, false)
+		if GetChannelName(_dnl.death_alerts_channel) == 0 then
+			JoinChannelByName(_dnl.death_alerts_channel, DEATH_ALERTS_CHANNEL_PW, nil, false)
+		end
 	end)
 
 	_dnl.hideChannelFromChatFrames(_dnl.death_alerts_channel)
@@ -105,7 +116,7 @@ mute_frame:SetScript("OnEvent", function(_, _, notice, _, _, _, _, _, _, channel
 	if notice ~= "MUTED" then return end
 	for _, name in ipairs({ _dnl.death_alerts_channel, _dnl.sync_channel }) do
 		if name and (channelBaseName == name or channelIndex == GetChannelName(name)) then
-			_dnl.setSendMuted(true)
+			_dnl.onSendMutedNotice()
 			return
 		end
 	end
@@ -128,13 +139,19 @@ local function sendNextInQueue()
 	---Send a single CHANNEL message via shared CTL-aware helper.
 	---@param text string   Full chat message
 	---@param channel_num number  Channel index
+	---@param requeue fun()|nil  Puts the entry back if the send turns out to be muted
 	---@return boolean sent  true if message was sent (or debug-printed)
-	local function doSend(text, channel_num)
+	local function doSend(text, channel_num, requeue)
 		if _dnl.LOCAL_DEBUG_ONLY then
 			sendChatMessageDebug(_dnl.COMM_NAME, text)
 			return true
 		end
-		return _dnl.safeSendChannel(text, channel_num)
+		return _dnl.safeSendChannel(text, channel_num, requeue)
+	end
+
+	---Re-insert `entry` at the head of `queue` (used when a mute probe fails).
+	local function requeuer(queue, entry)
+		return function() table.insert(queue, 1, entry) end
 	end
 
 	if #_dnl.deathlog_request_duel_to_death_queue > 0 then
@@ -145,7 +162,7 @@ local function sendNextInQueue()
 		end
 		local entry = _dnl.deathlog_request_duel_to_death_queue[1]
 		local commMessage = _dnl.COMM_COMMANDS["REQUEST_DUEL_TO_DEATH"] .. _dnl.COMM_COMMAND_DELIM .. entry[1]
-		if doSend(commMessage, channel_num) then
+		if doSend(commMessage, channel_num, requeuer(_dnl.deathlog_request_duel_to_death_queue, entry)) then
 			table.remove(_dnl.deathlog_request_duel_to_death_queue, 1)
 		end
 		return
@@ -159,7 +176,7 @@ local function sendNextInQueue()
 		end
 		local entry = _dnl.watchlist_query_queue[1]
 		local commMessage = _dnl.COMM_COMMANDS["WATCHLIST_QUERY"] .. _dnl.COMM_COMMAND_DELIM .. entry[1]
-		if doSend(commMessage, channel_num) then
+		if doSend(commMessage, channel_num, requeuer(_dnl.watchlist_query_queue, entry)) then
 			table.remove(_dnl.watchlist_query_queue, 1)
 		end
 		return
@@ -173,7 +190,7 @@ local function sendNextInQueue()
 		end
 		local entry = _dnl.broadcast_death_ping_queue[1]
 		local commMessage = _dnl.COMM_COMMANDS["BROADCAST_DEATH_PING_CHECKSUM"] .. _dnl.COMM_COMMAND_DELIM .. entry[1]
-		if doSend(commMessage, channel_num) then
+		if doSend(commMessage, channel_num, requeuer(_dnl.broadcast_death_ping_queue, entry)) then
 			table.remove(_dnl.broadcast_death_ping_queue, 1)
 		end
 		return
@@ -187,7 +204,7 @@ local function sendNextInQueue()
 		end
 		local entry = _dnl.death_alert_out_queue[1]
 		local commMessage = _dnl.COMM_COMMANDS["BROADCAST_DEATH_PING"] .. _dnl.COMM_COMMAND_DELIM .. entry[1]
-		if doSend(commMessage, channel_num) then
+		if doSend(commMessage, channel_num, requeuer(_dnl.death_alert_out_queue, entry)) then
 			table.remove(_dnl.death_alert_out_queue, 1)
 		end
 		return

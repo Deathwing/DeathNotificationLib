@@ -1,5 +1,11 @@
 # Changelog
 
+## V31 — 2026-09-11
+
+### Bug Fixes
+- **Stopped reshuffling players' chat channel numbers.** On every login, and again after a disconnect, the library left its two custom channels and rejoined them a few seconds later. WoW restores custom channels from the chat cache at login, so leaving freed the slot they already held, and the rejoin took the lowest free slot instead. Outside a city that is Trade's slot, so Trade came back as 6 and General moved down, and the chat cache remembered it. The library now joins only when it is not already a member and never leaves first. Players whose channels are already out of order can restore them by leaving and rejoining General and Trade once.
+- **Mute probes no longer lose a message.** While an account is muted, the library sends one real queued message every five minutes to test whether the mute has lifted. That message was dropped when the server answered with another mute notice. It is now put back at the head of its queue, so a death alert queued during a mute is delivered once the mute ends.
+
 ## V30 - 2026-09-11
 
 ### Bug Fixes

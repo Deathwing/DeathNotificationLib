@@ -243,7 +243,9 @@ local function sendNextInQueue()
 		return
 	end
 
-	if _dnl.safeSendChannel(_dnl.sync_out_queue[1][1], channel_num) then
+	local entry = _dnl.sync_out_queue[1]
+	local requeue = function() table.insert(_dnl.sync_out_queue, 1, entry) end
+	if _dnl.safeSendChannel(entry[1], channel_num, requeue) then
 		table.remove(_dnl.sync_out_queue, 1)
 	end
 end
@@ -1174,10 +1176,20 @@ function _dnl.joinSyncChannel()
 	-- addon-version upgrade hints from other players.
 
 	local channel_name = _dnl.SYNC_CHANNEL_BASE
-	LeaveChannelByName(channel_name)
+
+	-- Never leave and rejoin: see deathlogJoinChannel in ~Transport for why
+	-- (it shuffles the player's General/Trade channel numbers).
+	if GetChannelName(channel_name) ~= 0 then
+		_dnl.sync_channel = channel_name
+		_dnl.hideChannelFromChatFrames(channel_name)
+		_dnl._startSyncWatermarkTicker()
+		return
+	end
 
 	C_Timer.After(3.0, function()
-		JoinChannelByName(channel_name, SYNC_CHANNEL_PW, nil, false)
+		if GetChannelName(channel_name) == 0 then
+			JoinChannelByName(channel_name, SYNC_CHANNEL_PW, nil, false)
+		end
 	end)
 
 	_dnl.hideChannelFromChatFrames(channel_name)

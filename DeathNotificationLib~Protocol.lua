@@ -767,6 +767,23 @@ function _dnl.setSendMuted(muted)
 	send_muted_at = muted and GetServerTime() or 0
 end
 
+--- The message sent to test whether a mute has lifted. If the server answers
+--- with another MUTED notice within MUTE_PROBE_WINDOW seconds, the sender's
+--- requeue callback puts the message back so nothing is lost to the probe.
+local mute_probe = nil ---@type { requeue: fun(), at: number }|nil
+local MUTE_PROBE_WINDOW = 10
+
+--- Called by the CHAT_MSG_CHANNEL_NOTICE handler when the server reports
+--- MUTED on one of our channels.
+function _dnl.onSendMutedNotice()
+	_dnl.setSendMuted(true)
+	local probe = mute_probe
+	mute_probe = nil
+	if probe and (GetTime() - probe.at) <= MUTE_PROBE_WINDOW then
+		probe.requeue()
+	end
+end
+
 --- Send a chat message on a numbered channel, respecting ChatThrottleLib
 --- bandwidth budget.  Bypasses CTL:SendChatMessage (which defers CHANNEL
 --- sends out of hardware-event context, breaking Classic restrictions)
@@ -778,9 +795,11 @@ end
 --- "MUTED"), or the pcall failed.
 ---@param text string         Full chat message text
 ---@param channel_num number  Channel index from GetChannelName()
+---@param requeue fun()|nil   Re-inserts the message at the head of its queue;
+---                           called if this send was a mute probe that failed
 ---@return boolean sent
 ---@diagnostic disable-next-line: duplicate-set-field
-function _dnl.safeSendChannel(text, channel_num)
+function _dnl.safeSendChannel(text, channel_num, requeue)
 	local CTL = _G.ChatThrottleLib ---@type ChatThrottleLib?
 	if CTL then
 		local cost = #text + (CTL.MSG_OVERHEAD or 40)
@@ -789,15 +808,20 @@ function _dnl.safeSendChannel(text, channel_num)
 			return false
 		end
 	end
+	local probing = false
 	if _dnl.send_muted then
 		if (GetServerTime() - send_muted_at) < MUTE_RETRY_COOLDOWN then
 			return false
 		end
 		_dnl.setSendMuted(false)
+		probing = true
 	end
 	local ok, err = pcall(C_ChatInfo.SendChatMessage, text, "CHANNEL", nil, channel_num)
 	if not ok and _dnl.DEBUG then
 		print("[DNL] safeSendChannel failed: " .. tostring(err))
+	end
+	if ok and probing and requeue then
+		mute_probe = { requeue = requeue, at = GetTime() }
 	end
 	return ok
 end
