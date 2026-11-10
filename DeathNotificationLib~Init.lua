@@ -2,15 +2,77 @@
 DeathNotificationLib~Init.lua
 --]]
 
-local VERSION = 31
+local VERSION = 32
 
-if DeathNotificationLib and (DeathNotificationLib.VERSION or 0) >= VERSION then return end
+local lib = DeathNotificationLib
+if lib and lib.VERSION and (lib.VERSION >= VERSION or not lib.Shutdown) then return end
+if lib and lib.Shutdown then
+	lib.Shutdown()
+end
+lib = lib or {}
+DeathNotificationLib = lib
 
----@class DeathNotificationLib
----@field Internal _dnl
-DeathNotificationLib = { VERSION = VERSION , Internal = {} }
+local internal = { frames = {}, cleanups = {}, stopped = false }
+lib.VERSION = VERSION
+lib.State = lib.State or {}
+lib.Internal = internal
 
-local _dnl = DeathNotificationLib.Internal ---@class _dnl
+function lib.Shutdown()
+	internal.stopped = true
+	for _, cleanup in ipairs(internal.cleanups) do
+		cleanup()
+	end
+	for _, frame in ipairs(internal.frames) do
+		frame:UnregisterAllEvents()
+		frame:SetScript("OnUpdate", nil)
+		frame:Hide()
+	end
+end
+
+function internal.createFrame(...)
+	local frame = CreateFrame(...)
+	internal.frames[#internal.frames + 1] = frame
+	return frame
+end
+
+function internal.after(delay, callback)
+	C_Timer.After(delay, function()
+		if not internal.stopped then callback() end
+	end)
+end
+
+function internal.newTicker(interval, callback, iterations)
+	return C_Timer.NewTicker(interval, function(ticker)
+		if internal.stopped then return ticker:Cancel() end
+		callback(ticker)
+	end, iterations)
+end
+
+function internal.newTimer(delay, callback)
+	return C_Timer.NewTimer(delay, function(timer)
+		if not internal.stopped then callback(timer) end
+	end)
+end
+
+function internal.hookSecureFunc(...)
+	local args = { ... }
+	local callback = args[#args]
+	args[#args] = function(...)
+		if not internal.stopped then return callback(...) end
+	end
+	hooksecurefunc(unpack(args))
+end
+
+function internal.hookScript(frame, script, callback)
+	frame:HookScript(script, function(...)
+		if not internal.stopped then return callback(...) end
+	end)
+end
+
+local _dnl = internal ---@class _dnl
+
+_dnl.IS_FOREVER = WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
+_dnl.EXPANSION_LEVEL = _dnl.IS_FOREVER and 0 or (GetExpansionLevel and GetExpansionLevel() or 0)
 
 -- ── Auto-detect the Interface path to this library folder ────────────
 -- debugstack() returns "path/to/file.lua:line: ..." when the chunk loads.
@@ -95,6 +157,24 @@ function _dnl.compareVersions(a, b)
 	return 0
 end
 
+--- Send via ChatThrottleLib when loaded (it may load after this library), else the client API.
+---@param priority "BULK"|"NORMAL"|"ALERT"
+---@param prefix string
+---@param text string
+---@param chatType string
+---@param target string|nil
+function _dnl.sendAddonMessage(priority, prefix, text, chatType, target)
+	local CTL = _G.ChatThrottleLib
+	if CTL then
+		CTL:SendAddonMessage(priority, prefix, text, chatType, target)
+		return
+	end
+	local send = C_ChatInfo and C_ChatInfo.SendAddonMessage or _G.SendAddonMessage
+	if send then
+		send(prefix, text, chatType, target)
+	end
+end
+
 ---------------------------------------------------------------------------
 -- Shared utility: hide a channel from all chat frames
 ---------------------------------------------------------------------------
@@ -160,13 +240,18 @@ local function dnlChannelChatFilter(self, event, arg1, arg2, arg3, arg4,
 end
 
 local addMessageEventFilter = ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter or ChatFrame_AddMessageEventFilter
+local removeMessageEventFilter = ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter or ChatFrame_RemoveMessageEventFilter
 
 if not _dnl.DEBUG then
-	addMessageEventFilter("CHAT_MSG_CHANNEL", dnlChannelChatFilter)
-	addMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", dnlChannelChatFilter)
-	addMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE_USER", dnlChannelChatFilter)
-	addMessageEventFilter("CHAT_MSG_CHANNEL_JOIN", dnlChannelChatFilter)
-	addMessageEventFilter("CHAT_MSG_CHANNEL_LEAVE", dnlChannelChatFilter)
+	local filteredEvents = { "CHAT_MSG_CHANNEL", "CHAT_MSG_CHANNEL_NOTICE", "CHAT_MSG_CHANNEL_NOTICE_USER", "CHAT_MSG_CHANNEL_JOIN", "CHAT_MSG_CHANNEL_LEAVE" }
+	for _, event in ipairs(filteredEvents) do
+		addMessageEventFilter(event, dnlChannelChatFilter)
+	end
+	_dnl.cleanups[#_dnl.cleanups + 1] = function()
+		for _, event in ipairs(filteredEvents) do
+			removeMessageEventFilter(event, dnlChannelChatFilter)
+		end
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -190,11 +275,11 @@ local function drainAll()
 	end
 end
 
-WorldFrame:HookScript("OnMouseDown", function(self, button)
+_dnl.hookScript(WorldFrame, "OnMouseDown", function(self, button)
 	drainAll()
 end)
 
-local input_frame = CreateFrame("Frame", nil, UIParent)
+local input_frame = _dnl.createFrame("Frame", nil, UIParent)
 input_frame:SetScript("OnKeyDown", drainAll)
 input_frame:SetPropagateKeyboardInput(true)
 
@@ -217,11 +302,13 @@ input_frame:SetPropagateKeyboardInput(true)
 
 --- Registry of all attached addons, keyed by addon name.
 ---@type table<string, DNL_RegisteredAddon>
-_dnl.addons = {}
+lib.State.addons = lib.State.addons or {}
+_dnl.addons = lib.State.addons
 
 --- Lookup from 3-char tag to addon name for fast dispatch.
 ---@type table<string, string>
-_dnl.tag_to_addon = {}
+lib.State.tag_to_addon = lib.State.tag_to_addon or {}
+_dnl.tag_to_addon = lib.State.tag_to_addon
 
 --- Runtime settings consumed by DeathNotificationLib.
 --- These are read as optional values from each addon's settings table;

@@ -23,8 +23,6 @@ WoW's hardware-event requirement.
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
 
-local CTL = _G.ChatThrottleLib
-
 ---@type table<string, number>
 _dnl.expect_ack = {}
 
@@ -45,26 +43,14 @@ local function sendQuery(name, channelType, target, tag)
     if comm_query_lock_out then
         return
     end
-    comm_query_lock_out = C_Timer.NewTimer(3, function()
+    comm_query_lock_out = _dnl.newTimer(3, function()
         comm_query_lock_out = nil
     end)
     _dnl.expect_ack[name] = 1
-    C_Timer.After(60, function()
+    _dnl.after(60, function()
         _dnl.expect_ack[name] = nil
     end)
-    if channelType == "WHISPER" then
-        if CTL then
-            CTL:SendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, channelType, target)
-        else
-            _G.SendAddonMessage(_dnl.COMM_NAME, commMessage, channelType, target)
-        end
-    else
-        if CTL then
-            CTL:SendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, channelType)
-        else
-            _G.SendAddonMessage(_dnl.COMM_NAME, commMessage, channelType)
-        end
-    end
+    _dnl.sendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, channelType, channelType == "WHISPER" and target or nil)
 end
 
 ---@type { name: string, callback: fun(info: WhoInfo|nil) }[]
@@ -127,7 +113,7 @@ function _dnl.whoPlayer(name, callback)
 	who_request_name = name_key
 	who_request_callback = callback
 
-	who_request_timeout = C_Timer.NewTimer(5, function()
+	who_request_timeout = _dnl.newTimer(5, function()
 		handleWhoListResult(nil)
 	end)
 

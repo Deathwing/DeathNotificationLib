@@ -28,10 +28,10 @@ _dnl.HC_STATE = {
 	NOT_HARDCORE_ANYMORE = 3,
 }
 
-_dnl.MAX_PLAYER_LEVEL = GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion() or MAX_PLAYER_LEVEL
+_dnl.MAX_PLAYER_LEVEL = (_dnl.IS_FOREVER and GetMaxPlayerLevel and GetMaxPlayerLevel()) or (GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion()) or MAX_PLAYER_LEVEL
 _dnl.IS_HARDCORE_REALM = (C_GameRules.IsHardcoreActive and C_GameRules.IsHardcoreActive()) or (C_ClassicHardcore and C_ClassicHardcore.IsHardcoreSelf and C_ClassicHardcore.IsHardcoreSelf()) or (C_Seasons and C_Seasons.GetActiveSeason and (C_Seasons.GetActiveSeason() == 3 or C_Seasons.GetActiveSeason() == 12))
 _dnl.IS_SOUL_OF_IRON_REALM = WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
-_dnl.ROOT_MAP_ID = GetExpansionLevel and GetExpansionLevel() >= 1 and 946 or 947
+_dnl.ROOT_MAP_ID = _dnl.EXPANSION_LEVEL >= 1 and 946 or 947
 
 ---@class UnitState
 ---@field name string

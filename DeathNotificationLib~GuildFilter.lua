@@ -81,7 +81,7 @@ end
 
 -- Exposed on _dnl so Events.lua can call it from initializeOnFirstReady
 _dnl.refreshGuildMembers = refreshGuildMembers
-C_Timer.NewTicker(10, refreshGuildMembers)
+_dnl.newTicker(10, refreshGuildMembers)
 
 --- Check if a guild name is in the player's guild or GreenWall confederation
 ---@param guildName string|nil The guild name to check

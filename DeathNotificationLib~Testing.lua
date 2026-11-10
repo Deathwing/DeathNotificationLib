@@ -192,7 +192,7 @@ local function testCleanup()
 			CLEANUP_FOLLOW_UPS * CLEANUP_FOLLOW_UP_INTERVAL))
 
 		for i = 1, CLEANUP_FOLLOW_UPS do
-			C_Timer.After(i * CLEANUP_FOLLOW_UP_INTERVAL, function()
+			_dnl.after(i * CLEANUP_FOLLOW_UP_INTERVAL, function()
 				if not test_tracking.active then return end
 				testSweep()
 				if i == CLEANUP_FOLLOW_UPS then
@@ -250,12 +250,23 @@ _dnl._testBegin   = testBegin
 _dnl._testCleanup = testCleanup
 _dnl._testTrack   = testTrack
 
+--- Fire PLAYER_DEAD and run `callback` once the broadcast has been decided:
+--- synchronously on Era/TBC, after the death-recap polling on Forever.
+local function simulatePlayerDead(callback)
+	_dnl.handleEvent(_dnl.event_handler, "PLAYER_DEAD")
+	if _dnl.PLAYER_DEAD_SETTLE_DELAY then
+		_dnl.after(_dnl.PLAYER_DEAD_SETTLE_DELAY + 0.5, callback)
+	else
+		callback()
+	end
+end
+
 function _dnl.testSelfDeathWithReportedDeath()
 	testBegin()
 	_dnl.testSelfDeath()
 	_dnl.testReportedDeath()
 	-- Cleanup after the async reported-death timer (1s) + buffer
-	C_Timer.After(5, testCleanup)
+	_dnl.after(5, testCleanup)
 end
 
 function _dnl.testSelfDeath()
@@ -270,12 +281,13 @@ function _dnl.testSelfDeath()
 		unitState.hasSoulOfIron = true
 	end
 	_dnl.lru_by_name[UnitName("player"):lower()] = nil
-	_dnl.handleEvent(_dnl.event_handler, "PLAYER_DEAD")
-	if unitState.hasSoulOfIron ~= nil then
-		unitState.hasSoulOfIron = soul_of_iron_was_active
-	end
-	-- Cleanup after LRU auto-commit timer (3.5s) + buffer
-	C_Timer.After(5, testCleanup)
+	simulatePlayerDead(function()
+		if unitState.hasSoulOfIron ~= nil then
+			unitState.hasSoulOfIron = soul_of_iron_was_active
+		end
+		-- Cleanup after LRU auto-commit timer (3.5s) + buffer
+		_dnl.after(5, testCleanup)
+	end)
 end
 
 function _dnl.testReportedDeath()
@@ -300,7 +312,7 @@ function _dnl.testReportedDeath()
 	local test_name = name
 	local test_guid = guid
 
-	C_Timer.After(1, function()
+	_dnl.after(1, function()
 		print("Processing emote...")
 		local my_args = {
 			[1] = test_msg,
@@ -318,7 +330,7 @@ function _dnl.testReportedDeath()
 		}
 		_dnl.handleEvent(_dnl.event_handler, "CHAT_MSG_MONSTER_EMOTE", unpack(my_args))
 		-- Cleanup after LRU auto-commit + buffer
-		C_Timer.After(5, testCleanup)
+		_dnl.after(5, testCleanup)
 	end)
 end
 
@@ -351,7 +363,7 @@ function _dnl.testPartyDeath()
 	local random_unit = group_units[math.random(1, #group_units)]
 	local player_name = UnitName(random_unit)
 
-	C_Timer.After(1, function() 
+	_dnl.after(1, function() 
 		print("|cffFF6600[Deathlog]|r Simulating party/raid death for:", player_name, "(", random_unit, ")")
 
 		_dnl.lru_by_name[player_name:lower()] = nil
@@ -364,7 +376,7 @@ function _dnl.testPartyDeath()
 
 		print("|cffFF6600[Deathlog]|r Death report queued. Press any key or click to process send queue.")
 		-- Cleanup after LRU auto-commit + buffer
-		C_Timer.After(5, testCleanup)
+		_dnl.after(5, testCleanup)
 	end)
 end
 
@@ -946,7 +958,7 @@ function _dnl.testV2BackwardsCompat()
 	-- ============================================================
 	-- Summary
 	-- ============================================================
-	C_Timer.After(0.5, function()
+	_dnl.after(0.5, function()
 		print(TAG .. "=========================")
 		printSummary()
 		print(TAG .. "=========================")
@@ -1115,29 +1127,38 @@ function _dnl.testIntegration()
 	local saved_hasSoulOfIron = unitState.hasSoulOfIron
 	local saved_is_hardcore_realm = _dnl.IS_HARDCORE_REALM
 
-	unitState.last_attack_source_name = _dnl.D.ID_TO_NPC[448]  -- synthetic source
-	unitState.recent_msg = "Integration test last words"
 	-- Force hardcore state so onPlayerDead actually broadcasts
-	_dnl.IS_HARDCORE_REALM = true
-	if unitState.hasSoulOfIron ~= nil then
-		unitState.hasSoulOfIron = true
+	local function forceTrackedState(last_words)
+		unitState.last_attack_source_name = _dnl.D.ID_TO_NPC[448]  -- synthetic source
+		unitState.recent_msg = last_words
+		_dnl.IS_HARDCORE_REALM = true
+		if unitState.hasSoulOfIron ~= nil then
+			unitState.hasSoulOfIron = true
+		end
 	end
 
+	local function restoreTrackedState()
+		_dnl.IS_HARDCORE_REALM = saved_is_hardcore_realm
+		unitState.last_attack_source_name = saved_last_attack_name
+		unitState.last_attack_source_guid = saved_last_attack_guid
+		unitState.recent_msg = saved_recent_msg
+		if saved_hasSoulOfIron ~= nil then
+			unitState.hasSoulOfIron = saved_hasSoulOfIron
+		end
+	end
+
+	local runDedupPhase, runIncomingBroadcastPhases
+
+	forceTrackedState("Integration test last words")
 	local queue_size_before_death = #_dnl.death_alert_out_queue
-	_dnl.handleEvent(_dnl.event_handler, "PLAYER_DEAD")
-	local self_death_was_queued = #_dnl.death_alert_out_queue > queue_size_before_death
+	simulatePlayerDead(function()
+		local self_death_was_queued = #_dnl.death_alert_out_queue > queue_size_before_death
+		restoreTrackedState()
+		-- Wait for LRU auto-commit (3.5s for regular death)
+		_dnl.after(5.0, function() runDedupPhase(self_death_was_queued) end)
+	end)
 
-	-- Restore state
-	_dnl.IS_HARDCORE_REALM = saved_is_hardcore_realm
-	unitState.last_attack_source_name = saved_last_attack_name
-	unitState.last_attack_source_guid = saved_last_attack_guid
-	unitState.recent_msg = saved_recent_msg
-	if saved_hasSoulOfIron ~= nil then
-		unitState.hasSoulOfIron = saved_hasSoulOfIron
-	end
-
-	-- Wait for LRU auto-commit (3.5s for regular death)
-	C_Timer.After(5.0, function()
+	runDedupPhase = function(self_death_was_queued)
 		-- Verify death was queued in out_queue (captured immediately, before
 		-- OnMouseDown/OnKeyDown hooks can drain the queue)
 		record("self-death queued in out_queue", self_death_was_queued)
@@ -1159,28 +1180,18 @@ function _dnl.testIntegration()
 		resetHookCapture()
 		local queue_size_before = #_dnl.death_alert_out_queue
 
-		unitState.last_attack_source_name = _dnl.D.ID_TO_NPC[448]
-		unitState.recent_msg = "Duplicate death"
-		_dnl.IS_HARDCORE_REALM = true
-		if unitState.hasSoulOfIron ~= nil then
-			unitState.hasSoulOfIron = true
-		end
+		forceTrackedState("Duplicate death")
+		simulatePlayerDead(function()
+			restoreTrackedState()
+			local queue_size_after = #_dnl.death_alert_out_queue
+			record("dedup: duplicate death NOT re-queued",
+				queue_size_after == queue_size_before,
+				string.format("queue before=%d, after=%d", queue_size_before, queue_size_after))
+			runIncomingBroadcastPhases()
+		end)
+	end
 
-		_dnl.handleEvent(_dnl.event_handler, "PLAYER_DEAD")
-
-		_dnl.IS_HARDCORE_REALM = saved_is_hardcore_realm
-		unitState.last_attack_source_name = saved_last_attack_name
-		unitState.last_attack_source_guid = saved_last_attack_guid
-		unitState.recent_msg = saved_recent_msg
-		if saved_hasSoulOfIron ~= nil then
-			unitState.hasSoulOfIron = saved_hasSoulOfIron
-		end
-
-		local queue_size_after = #_dnl.death_alert_out_queue
-		record("dedup: duplicate death NOT re-queued",
-			queue_size_after == queue_size_before,
-			string.format("queue before=%d, after=%d", queue_size_before, queue_size_after))
-
+	runIncomingBroadcastPhases = function()
 		-- Step 5: handleDeathBroadcast (simulate incoming peer broadcast)
 		print(TAG .. "Phase 5: Incoming broadcast simulation")
 		resetHookCapture()
@@ -1220,7 +1231,7 @@ function _dnl.testIntegration()
 			end
 
 			-- Run before auto-commit timer (3.5s) so entry is still uncommitted
-			C_Timer.After(2.0, function()
+			_dnl.after(2.0, function()
 				-- Step 6: Checksum corroboration
 				print(TAG .. "Phase 6: Checksum corroboration")
 				local peer_checksum2 = _dnl.fletcher16(peer_data)
@@ -2798,7 +2809,7 @@ function _dnl.testIntegration()
 				end -- end scope block for phases 35-39
 
 				-- Final summary
-				C_Timer.After(0.5, function()
+				_dnl.after(0.5, function()
 					print(TAG .. "=========================")
 					printSummary()
 					print(TAG .. "=========================")
@@ -2810,7 +2821,7 @@ function _dnl.testIntegration()
 			printSummary()
 			testCleanup()
 		end
-	end)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -3303,7 +3314,7 @@ function _dnl.testSyncEndToEnd()
 
 	-- handleSyncBucketRequest is partially async (sendNextBatch uses C_Timer.After).
 	-- Wait 3 seconds for all batches to complete, then Phase 4.
-	C_Timer.After(3, function()
+	_dnl.after(3, function()
 		-- ----------------------------------------------------------------
 		-- Phase 4: Drain E$ queue → requester processes entries
 		-- ----------------------------------------------------------------
@@ -3492,7 +3503,7 @@ function _dnl.testSyncEndToEnd()
 
 				_dnl.handleSyncBucketRequest("MismatchRequester", mm_payload)
 
-				C_Timer.After(2, function()
+				_dnl.after(2, function()
 					local mm_msgs = 0
 					for _, item in ipairs(_dnl.sync_out_queue) do
 						if item[1]:sub(1, 2) == _dnl.SYNC_CMD_ENTRY_RES .. _dnl.COMM_COMMAND_DELIM then
@@ -3554,7 +3565,7 @@ function _dnl.testSyncEndToEnd()
 
 					_dnl.handleSyncBucketRequest("EmptyRequester", empty_payload)
 
-					C_Timer.After(2, function()
+					_dnl.after(2, function()
 						local empty_e2e_msgs = {}
 						for _, item in ipairs(_dnl.sync_out_queue) do
 							if item[1]:sub(1, 2) == _dnl.SYNC_CMD_ENTRY_RES .. _dnl.COMM_COMMAND_DELIM then
@@ -3740,7 +3751,7 @@ function _dnl.testWho()
 	record("enqueueWhoPlayer(self) accepted", true)
 
 	-- Wait for user input to drain + response (up to 15s)
-	C_Timer.After(15, function()
+	_dnl.after(15, function()
 		-- ============================================================
 		-- Phase 5: Self-lookup results
 		-- ============================================================
@@ -3797,7 +3808,7 @@ function _dnl.testWho()
 				"callback fired=" .. tostring(self_callback_fired) .. " but info was nil (timeout or no input?)")
 		end
 
-		C_Timer.After(0.5, function()
+		_dnl.after(0.5, function()
 			print(TAG .. "=========================")
 			printSummary()
 			print(TAG .. "=========================")
@@ -3948,7 +3959,7 @@ function _dnl.testUltraHardcore()
 	-- ============================================================
 	-- Summary
 	-- ============================================================
-	C_Timer.After(0.5, function()
+	_dnl.after(0.5, function()
 		print(TAG .. "=========================")
 		printSummary()
 		print(TAG .. "=========================")
@@ -4530,7 +4541,7 @@ function _dnl.testAttachAddon()
 	_dnl.per_addon_hooks        = saved_per_addon_hooks
 	_dnl.per_addon_hooks_secure = saved_per_addon_secure
 
-	C_Timer.After(0.5, function()
+	_dnl.after(0.5, function()
 		print(TAG .. "=========================")
 		printSummary()
 		print(TAG .. "=========================")
@@ -4949,7 +4960,7 @@ function _dnl.testWatchlistQuery()
 	_dnl.watchlist_query_queue = saved_queue
 	_dnl.expect_ack          = saved_expect_ack
 
-	C_Timer.After(0.5, function()
+	_dnl.after(0.5, function()
 		print(TAG .. "=========================")
 		printSummary()
 		print(TAG .. "=========================")
@@ -5378,7 +5389,7 @@ function _dnl.testDedup()
 		end
 
 		-- Wait for auto-commit (3.5s + buffer)
-		C_Timer.After(5.0, function()
+		_dnl.after(5.0, function()
 			local zf_hook = hook_calls[zf_name_lower]
 			record("phase6: createEntry fired exactly 1 time",
 				zf_hook and zf_hook.count == 1,
@@ -5437,7 +5448,7 @@ function _dnl.testDedup()
 					string.format("got %d", zfs_best_quality))
 
 				-- Wait for commit
-				C_Timer.After(5.0, function()
+				_dnl.after(5.0, function()
 					local zfs_hook = hook_calls[zfs_lower]
 					record("phase7: createEntry fired exactly 1 time",
 						zfs_hook and zfs_hook.count == 1,
@@ -5608,7 +5619,7 @@ function _dnl.testDedup()
 					end
 
 					-- Final summary
-					C_Timer.After(0.5, function()
+					_dnl.after(0.5, function()
 						print(TAG .. "=========================")
 						printSummary()
 						print(TAG .. "=========================")
@@ -5667,13 +5678,20 @@ function _dnl.testVersionCheck()
 	local saved_addons              = _dnl.addons
 	local saved_tag_to_addon        = _dnl.tag_to_addon
 	local saved_hook_newer_version  = _dnl.hook_newer_version_functions
+	local saved_sendAddonMessage    = _dnl.sendAddonMessage
+
+	local function restoreState()
+		_dnl.addons                       = saved_addons
+		_dnl.tag_to_addon                 = saved_tag_to_addon
+		_dnl.hook_newer_version_functions = saved_hook_newer_version
+		_dnl.sendAddonMessage             = saved_sendAddonMessage
+		wipe(_dnl._vc_warned_versions)
+		wipe(_dnl._vc_last_announce_time)
+	end
 
 	-- Capture whisper messages sent by the version check module
 	local whisper_log = {}
-	local saved_CTL = _G.ChatThrottleLib
-	local saved_SendAddonMessage = _G.SendAddonMessage
-	_G.ChatThrottleLib = nil  -- force raw path
-	_G.SendAddonMessage = function(prefix, text, chatType, target)
+	_dnl.sendAddonMessage = function(priority, prefix, text, chatType, target)
 		table.insert(whisper_log, {
 			prefix   = prefix,
 			text     = text,
@@ -5682,388 +5700,381 @@ function _dnl.testVersionCheck()
 		})
 	end
 
-	-- Register a mock addon
-	_dnl.addons = {}
-	_dnl.tag_to_addon = {}
-	_dnl.addons["__TestVC__"] = {
-		name          = "__TestVC__",
-		tag           = "VC1",
-		isUnitTracked = function() return true end,
-		settings      = {},
-		addon_version = "1.0.0",
-	}
-	_dnl.tag_to_addon["VC1"] = "__TestVC__"
-
-	-- Clear version check state
-	wipe(_dnl._vc_warned_versions)
-	wipe(_dnl._vc_last_announce_time)
-
-	-- Capture HookOnNewerVersion calls
-	local hook_calls = {}
-	_dnl.hook_newer_version_functions = {
-		function(addonName, newerVer, currentVer)
-			table.insert(hook_calls, {
-				addon   = addonName,
-				newer   = newerVer,
-				current = currentVer,
-			})
-		end,
-	}
-
-	-- ================================================================
-	-- Phase 1: Constants & prefix
-	-- ================================================================
-	print(TAG .. "Phase 1: Constants")
-
-	record("VERSION_CHECK_COMM_NAME defined",
-		_dnl.VERSION_CHECK_COMM_NAME ~= nil and _dnl.VERSION_CHECK_COMM_NAME == "HCDeathVer")
-
-	record("CMD_VERSION_ANNOUNCE is V",
-		_dnl._vc_CMD_VERSION_ANNOUNCE == "V")
-
-	record("CMD_NEWER_NOTIFY is N",
-		_dnl._vc_CMD_NEWER_NOTIFY == "N")
-
-	-- ================================================================
-	-- Phase 2: Receiving a NEWER version announcement
-	-- ================================================================
-	print(TAG .. "Phase 2: Newer version announcement")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	-- Simulate receiving V$VC1~2.0.0~ from "RemotePeer" on GUILD
-	local msg_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "2.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_newer,
-		"GUILD",
-		"RemotePeer",
-	})
-
-	record("newer version: hook fired",
-		#hook_calls == 1,
-		"count=" .. tostring(#hook_calls))
-
-	record("newer version: hook addon name correct",
-		#hook_calls >= 1 and hook_calls[1].addon == "__TestVC__")
-
-	record("newer version: hook newer version correct",
-		#hook_calls >= 1 and hook_calls[1].newer == "2.0.0")
-
-	record("newer version: hook current version correct",
-		#hook_calls >= 1 and hook_calls[1].current == "1.0.0")
-
-	record("newer version: newest_detected_version updated",
-		_dnl.addons["__TestVC__"].newest_detected_version == "2.0.0")
-
-	-- Should NOT whisper back (remote is newer, we don't tell them anything)
-	record("newer version: no whisper sent",
-		#whisper_log == 0,
-		"whispers=" .. tostring(#whisper_log))
-
-	-- ================================================================
-	-- Phase 3: Dedup — same version again should not re-fire
-	-- ================================================================
-	print(TAG .. "Phase 3: Dedup (same newer version)")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	-- Same message again
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_newer,
-		"GUILD",
-		"AnotherPeer",
-	})
-
-	record("dedup: hook NOT fired for same version",
-		#hook_calls == 0,
-		"count=" .. tostring(#hook_calls))
-
-	record("dedup: no whisper sent",
-		#whisper_log == 0)
-
-	-- ================================================================
-	-- Phase 4: Even newer version — no second warning (once per tag)
-	--          but newest_detected_version still updates silently
-	-- ================================================================
-	print(TAG .. "Phase 4: Even newer version (silent update)")
-
-	wipe(hook_calls)
-
-	local msg_even_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "3.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_even_newer,
-		"PARTY",
-		"ThirdPeer",
-	})
-
-	record("even newer: hook NOT fired (already warned for tag)",
-		#hook_calls == 0,
-		"count=" .. tostring(#hook_calls))
-
-	record("even newer: newest_detected_version updated to 3.0.0",
-		_dnl.addons["__TestVC__"].newest_detected_version == "3.0.0")
-
-	-- ================================================================
-	-- Phase 5: Receiving an OLDER version announcement → whisper back
-	-- ================================================================
-	print(TAG .. "Phase 5: Older version announcement (whisper back)")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	local msg_older = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "0.5.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_older,
-		"RAID",
-		"OldPeer",
-	})
-
-	record("older version: no hook fired (we're not outdated)",
-		#hook_calls == 0)
-
-	record("older version: whisper sent",
-		#whisper_log == 1,
-		"whispers=" .. tostring(#whisper_log))
-
-	if #whisper_log >= 1 then
-		record("older version: whisper prefix correct",
-			whisper_log[1].prefix == _dnl.VERSION_CHECK_COMM_NAME)
-
-		record("older version: whisper target correct",
-			whisper_log[1].target == "OldPeer")
-
-		record("older version: whisper chatType is WHISPER",
-			whisper_log[1].chatType == "WHISPER")
-
-		-- Verify whisper message format: N$VC1~1.0.0~
-		local expected_whisper = "N" .. _dnl.COMM_COMMAND_DELIM
-			.. "VC1" .. _dnl.COMM_FIELD_DELIM
-			.. "1.0.0" .. _dnl.COMM_FIELD_DELIM
-		record("older version: whisper message format correct",
-			whisper_log[1].text == expected_whisper,
-			string.format("expected '%s', got '%s'", expected_whisper, tostring(whisper_log[1].text)))
-	end
-
-	-- ================================================================
-	-- Phase 6: Receiving a SAME version announcement → no action
-	-- ================================================================
-	print(TAG .. "Phase 6: Same version announcement")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	local msg_same = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "1.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_same,
-		"PARTY",
-		"SamePeer",
-	})
-
-	record("same version: no hook fired",
-		#hook_calls == 0)
-
-	record("same version: no whisper sent",
-		#whisper_log == 0)
-
-	-- ================================================================
-	-- Phase 7: Receiving N$ (newer notify whisper) — we're outdated
-	-- ================================================================
-	print(TAG .. "Phase 7: Newer notify whisper (N$)")
-
-	-- Reset warned_versions so we can test the N$ path fresh
-	wipe(_dnl._vc_warned_versions)
-	_dnl.addons["__TestVC__"].newest_detected_version = nil
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	local msg_notify = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "5.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_notify,
-		"WHISPER",
-		"HelperPeer",
-	})
-
-	record("N$ notify: hook fired",
-		#hook_calls == 1)
-
-	record("N$ notify: newest_detected_version updated",
-		_dnl.addons["__TestVC__"].newest_detected_version == "5.0.0")
-
-	-- N$ should NOT trigger a whisper back (it's already a whisper response)
-	record("N$ notify: no whisper sent",
-		#whisper_log == 0)
-
-	-- ================================================================
-	-- Phase 8: N$ with older/same version → ignored
-	-- ================================================================
-	print(TAG .. "Phase 8: N$ with not-newer version")
-
-	wipe(hook_calls)
-
-	local msg_notify_old = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "0.1.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_notify_old,
-		"WHISPER",
-		"LiarPeer",
-	})
-
-	record("N$ old version: no hook fired",
-		#hook_calls == 0)
-
-	-- ================================================================
-	-- Phase 9: Self-messages are ignored
-	-- ================================================================
-	print(TAG .. "Phase 9: Self-messages ignored")
-
-	wipe(_dnl._vc_warned_versions)
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	local my_name = UnitName("player")
-	local msg_self = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "9.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_self,
-		"GUILD",
-		my_name,
-	})
-
-	record("self V$: no hook fired",
-		#hook_calls == 0)
-
-	record("self V$: no whisper sent",
-		#whisper_log == 0)
-
-	-- N$ from self
-	local msg_notify_self = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "9.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_notify_self,
-		"WHISPER",
-		my_name,
-	})
-
-	record("self N$: no hook fired",
-		#hook_calls == 0)
-
-	-- ================================================================
-	-- Phase 10: Unknown tag → ignored
-	-- ================================================================
-	print(TAG .. "Phase 10: Unknown tag")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	local msg_unk = "V" .. _dnl.COMM_COMMAND_DELIM .. "ZZZ" .. _dnl.COMM_FIELD_DELIM .. "2.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME,
-		msg_unk,
-		"GUILD",
-		"SomePeer",
-	})
-
-	record("unknown tag: no hook fired",
-		#hook_calls == 0)
-
-	record("unknown tag: no whisper sent",
-		#whisper_log == 0)
-
-	-- ================================================================
-	-- Phase 11: Malformed messages → no crash
-	-- ================================================================
-	print(TAG .. "Phase 11: Malformed messages")
-
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	-- Wrong prefix
-	_dnl.handleVersionCheckAddonMessage({ "WrongPrefix", "V$VC1~2.0.0~", "GUILD", "Peer" })
-	record("wrong prefix: no crash, no hook",
-		#hook_calls == 0)
-
-	-- Missing payload
-	_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, "V", "GUILD", "Peer" })
-	record("missing payload: no crash",
-		#hook_calls == 0)
-
-	-- No command delimiter
-	_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, "garbage", "GUILD", "Peer" })
-	record("no delimiter: no crash",
-		#hook_calls == 0)
-
-	-- Empty version
-	local msg_empty_ver = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, msg_empty_ver, "GUILD", "Peer" })
-	record("empty version: no crash",
-		#hook_calls == 0)
-
-	-- Invalid version string
-	local msg_bad_ver = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "notaversion" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, msg_bad_ver, "GUILD", "Peer" })
-	record("invalid version string: no crash, no hook",
-		#hook_calls == 0)
-
-	-- ================================================================
-	-- Phase 12: Multiple addons — each gets checked independently
-	-- ================================================================
-	print(TAG .. "Phase 12: Multiple addons")
-
-	_dnl.addons["__TestVC2__"] = {
-		name          = "__TestVC2__",
-		tag           = "VC2",
-		isUnitTracked = function() return true end,
-		settings      = {},
-		addon_version = "2.0.0",
-	}
-	_dnl.tag_to_addon["VC2"] = "__TestVC2__"
-
-	wipe(_dnl._vc_warned_versions)
-	wipe(hook_calls)
-	wipe(whisper_log)
-
-	-- VC1 gets a newer version
-	local msg_vc1_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "8.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME, msg_vc1_newer, "GUILD", "MultiPeer",
-	})
-
-	record("multi addon: VC1 hook fired",
-		#hook_calls == 1 and hook_calls[1].addon == "__TestVC__")
-
-	-- VC2 gets an older version → whisper back
-	local msg_vc2_older = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC2" .. _dnl.COMM_FIELD_DELIM .. "1.0.0" .. _dnl.COMM_FIELD_DELIM
-	_dnl.handleVersionCheckAddonMessage({
-		_dnl.VERSION_CHECK_COMM_NAME, msg_vc2_older, "GUILD", "MultiPeer2",
-	})
-
-	record("multi addon: VC2 no extra hook (not outdated)",
-		#hook_calls == 1)
-
-	record("multi addon: VC2 whisper sent",
-		#whisper_log == 1 and whisper_log[1].target == "MultiPeer2")
-
-	-- ================================================================
-	-- Cleanup: restore original state
-	-- ================================================================
-	_dnl.addons                       = saved_addons
-	_dnl.tag_to_addon                 = saved_tag_to_addon
-	_dnl.hook_newer_version_functions = saved_hook_newer_version
-	_G.ChatThrottleLib                = saved_CTL
-	_G.SendAddonMessage               = saved_SendAddonMessage
-
-	wipe(_dnl._vc_warned_versions)
-	wipe(_dnl._vc_last_announce_time)
-
-	C_Timer.After(0.5, function()
+	local ok, err = pcall(function()
+		-- Register a mock addon
+		_dnl.addons = {}
+		_dnl.tag_to_addon = {}
+		_dnl.addons["__TestVC__"] = {
+			name          = "__TestVC__",
+			tag           = "VC1",
+			isUnitTracked = function() return true end,
+			settings      = {},
+			addon_version = "1.0.0",
+		}
+		_dnl.tag_to_addon["VC1"] = "__TestVC__"
+
+		-- Clear version check state
+		wipe(_dnl._vc_warned_versions)
+		wipe(_dnl._vc_last_announce_time)
+
+		-- Capture HookOnNewerVersion calls
+		local hook_calls = {}
+		_dnl.hook_newer_version_functions = {
+			function(addonName, newerVer, currentVer)
+				table.insert(hook_calls, {
+					addon   = addonName,
+					newer   = newerVer,
+					current = currentVer,
+				})
+			end,
+		}
+
+		-- ================================================================
+		-- Phase 1: Constants & prefix
+		-- ================================================================
+		print(TAG .. "Phase 1: Constants")
+
+		record("VERSION_CHECK_COMM_NAME defined",
+			_dnl.VERSION_CHECK_COMM_NAME ~= nil and _dnl.VERSION_CHECK_COMM_NAME == "HCDeathVer")
+
+		record("CMD_VERSION_ANNOUNCE is V",
+			_dnl._vc_CMD_VERSION_ANNOUNCE == "V")
+
+		record("CMD_NEWER_NOTIFY is N",
+			_dnl._vc_CMD_NEWER_NOTIFY == "N")
+
+		-- ================================================================
+		-- Phase 2: Receiving a NEWER version announcement
+		-- ================================================================
+		print(TAG .. "Phase 2: Newer version announcement")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		-- Simulate receiving V$VC1~2.0.0~ from "RemotePeer" on GUILD
+		local msg_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "2.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_newer,
+			"GUILD",
+			"RemotePeer",
+		})
+
+		record("newer version: hook fired",
+			#hook_calls == 1,
+			"count=" .. tostring(#hook_calls))
+
+		record("newer version: hook addon name correct",
+			#hook_calls >= 1 and hook_calls[1].addon == "__TestVC__")
+
+		record("newer version: hook newer version correct",
+			#hook_calls >= 1 and hook_calls[1].newer == "2.0.0")
+
+		record("newer version: hook current version correct",
+			#hook_calls >= 1 and hook_calls[1].current == "1.0.0")
+
+		record("newer version: newest_detected_version updated",
+			_dnl.addons["__TestVC__"].newest_detected_version == "2.0.0")
+
+		-- Should NOT whisper back (remote is newer, we don't tell them anything)
+		record("newer version: no whisper sent",
+			#whisper_log == 0,
+			"whispers=" .. tostring(#whisper_log))
+
+		-- ================================================================
+		-- Phase 3: Dedup — same version again should not re-fire
+		-- ================================================================
+		print(TAG .. "Phase 3: Dedup (same newer version)")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		-- Same message again
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_newer,
+			"GUILD",
+			"AnotherPeer",
+		})
+
+		record("dedup: hook NOT fired for same version",
+			#hook_calls == 0,
+			"count=" .. tostring(#hook_calls))
+
+		record("dedup: no whisper sent",
+			#whisper_log == 0)
+
+		-- ================================================================
+		-- Phase 4: Even newer version — no second warning (once per tag)
+		--          but newest_detected_version still updates silently
+		-- ================================================================
+		print(TAG .. "Phase 4: Even newer version (silent update)")
+
+		wipe(hook_calls)
+
+		local msg_even_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "3.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_even_newer,
+			"PARTY",
+			"ThirdPeer",
+		})
+
+		record("even newer: hook NOT fired (already warned for tag)",
+			#hook_calls == 0,
+			"count=" .. tostring(#hook_calls))
+
+		record("even newer: newest_detected_version updated to 3.0.0",
+			_dnl.addons["__TestVC__"].newest_detected_version == "3.0.0")
+
+		-- ================================================================
+		-- Phase 5: Receiving an OLDER version announcement → whisper back
+		-- ================================================================
+		print(TAG .. "Phase 5: Older version announcement (whisper back)")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		local msg_older = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "0.5.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_older,
+			"RAID",
+			"OldPeer",
+		})
+
+		record("older version: no hook fired (we're not outdated)",
+			#hook_calls == 0)
+
+		record("older version: whisper sent",
+			#whisper_log == 1,
+			"whispers=" .. tostring(#whisper_log))
+
+		if #whisper_log >= 1 then
+			record("older version: whisper prefix correct",
+				whisper_log[1].prefix == _dnl.VERSION_CHECK_COMM_NAME)
+
+			record("older version: whisper target correct",
+				whisper_log[1].target == "OldPeer")
+
+			record("older version: whisper chatType is WHISPER",
+				whisper_log[1].chatType == "WHISPER")
+
+			-- Verify whisper message format: N$VC1~1.0.0~
+			local expected_whisper = "N" .. _dnl.COMM_COMMAND_DELIM
+				.. "VC1" .. _dnl.COMM_FIELD_DELIM
+				.. "1.0.0" .. _dnl.COMM_FIELD_DELIM
+			record("older version: whisper message format correct",
+				whisper_log[1].text == expected_whisper,
+				string.format("expected '%s', got '%s'", expected_whisper, tostring(whisper_log[1].text)))
+		end
+
+		-- ================================================================
+		-- Phase 6: Receiving a SAME version announcement → no action
+		-- ================================================================
+		print(TAG .. "Phase 6: Same version announcement")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		local msg_same = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "1.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_same,
+			"PARTY",
+			"SamePeer",
+		})
+
+		record("same version: no hook fired",
+			#hook_calls == 0)
+
+		record("same version: no whisper sent",
+			#whisper_log == 0)
+
+		-- ================================================================
+		-- Phase 7: Receiving N$ (newer notify whisper) — we're outdated
+		-- ================================================================
+		print(TAG .. "Phase 7: Newer notify whisper (N$)")
+
+		-- Reset warned_versions so we can test the N$ path fresh
+		wipe(_dnl._vc_warned_versions)
+		_dnl.addons["__TestVC__"].newest_detected_version = nil
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		local msg_notify = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "5.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_notify,
+			"WHISPER",
+			"HelperPeer",
+		})
+
+		record("N$ notify: hook fired",
+			#hook_calls == 1)
+
+		record("N$ notify: newest_detected_version updated",
+			_dnl.addons["__TestVC__"].newest_detected_version == "5.0.0")
+
+		-- N$ should NOT trigger a whisper back (it's already a whisper response)
+		record("N$ notify: no whisper sent",
+			#whisper_log == 0)
+
+		-- ================================================================
+		-- Phase 8: N$ with older/same version → ignored
+		-- ================================================================
+		print(TAG .. "Phase 8: N$ with not-newer version")
+
+		wipe(hook_calls)
+
+		local msg_notify_old = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "0.1.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_notify_old,
+			"WHISPER",
+			"LiarPeer",
+		})
+
+		record("N$ old version: no hook fired",
+			#hook_calls == 0)
+
+		-- ================================================================
+		-- Phase 9: Self-messages are ignored
+		-- ================================================================
+		print(TAG .. "Phase 9: Self-messages ignored")
+
+		wipe(_dnl._vc_warned_versions)
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		local my_name = UnitName("player")
+		local msg_self = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "9.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_self,
+			"GUILD",
+			my_name,
+		})
+
+		record("self V$: no hook fired",
+			#hook_calls == 0)
+
+		record("self V$: no whisper sent",
+			#whisper_log == 0)
+
+		-- N$ from self
+		local msg_notify_self = "N" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "9.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_notify_self,
+			"WHISPER",
+			my_name,
+		})
+
+		record("self N$: no hook fired",
+			#hook_calls == 0)
+
+		-- ================================================================
+		-- Phase 10: Unknown tag → ignored
+		-- ================================================================
+		print(TAG .. "Phase 10: Unknown tag")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		local msg_unk = "V" .. _dnl.COMM_COMMAND_DELIM .. "ZZZ" .. _dnl.COMM_FIELD_DELIM .. "2.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME,
+			msg_unk,
+			"GUILD",
+			"SomePeer",
+		})
+
+		record("unknown tag: no hook fired",
+			#hook_calls == 0)
+
+		record("unknown tag: no whisper sent",
+			#whisper_log == 0)
+
+		-- ================================================================
+		-- Phase 11: Malformed messages → no crash
+		-- ================================================================
+		print(TAG .. "Phase 11: Malformed messages")
+
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		-- Wrong prefix
+		_dnl.handleVersionCheckAddonMessage({ "WrongPrefix", "V$VC1~2.0.0~", "GUILD", "Peer" })
+		record("wrong prefix: no crash, no hook",
+			#hook_calls == 0)
+
+		-- Missing payload
+		_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, "V", "GUILD", "Peer" })
+		record("missing payload: no crash",
+			#hook_calls == 0)
+
+		-- No command delimiter
+		_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, "garbage", "GUILD", "Peer" })
+		record("no delimiter: no crash",
+			#hook_calls == 0)
+
+		-- Empty version
+		local msg_empty_ver = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, msg_empty_ver, "GUILD", "Peer" })
+		record("empty version: no crash",
+			#hook_calls == 0)
+
+		-- Invalid version string
+		local msg_bad_ver = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "notaversion" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({ _dnl.VERSION_CHECK_COMM_NAME, msg_bad_ver, "GUILD", "Peer" })
+		record("invalid version string: no crash, no hook",
+			#hook_calls == 0)
+
+		-- ================================================================
+		-- Phase 12: Multiple addons — each gets checked independently
+		-- ================================================================
+		print(TAG .. "Phase 12: Multiple addons")
+
+		_dnl.addons["__TestVC2__"] = {
+			name          = "__TestVC2__",
+			tag           = "VC2",
+			isUnitTracked = function() return true end,
+			settings      = {},
+			addon_version = "2.0.0",
+		}
+		_dnl.tag_to_addon["VC2"] = "__TestVC2__"
+
+		wipe(_dnl._vc_warned_versions)
+		wipe(hook_calls)
+		wipe(whisper_log)
+
+		-- VC1 gets a newer version
+		local msg_vc1_newer = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC1" .. _dnl.COMM_FIELD_DELIM .. "8.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME, msg_vc1_newer, "GUILD", "MultiPeer",
+		})
+
+		record("multi addon: VC1 hook fired",
+			#hook_calls == 1 and hook_calls[1].addon == "__TestVC__")
+
+		-- VC2 gets an older version → whisper back
+		local msg_vc2_older = "V" .. _dnl.COMM_COMMAND_DELIM .. "VC2" .. _dnl.COMM_FIELD_DELIM .. "1.0.0" .. _dnl.COMM_FIELD_DELIM
+		_dnl.handleVersionCheckAddonMessage({
+			_dnl.VERSION_CHECK_COMM_NAME, msg_vc2_older, "GUILD", "MultiPeer2",
+		})
+
+		record("multi addon: VC2 no extra hook (not outdated)",
+			#hook_calls == 1)
+
+		record("multi addon: VC2 whisper sent",
+			#whisper_log == 1 and whisper_log[1].target == "MultiPeer2")
+	end)
+
+	restoreState()
+	record("suite ran without error", ok, not ok and tostring(err) or nil)
+
+	_dnl.after(0.5, function()
 		print(TAG .. "=========================")
 		printSummary()
 		print(TAG .. "=========================")
@@ -6100,54 +6111,54 @@ function _dnl.testAll()
 	_dnl.testV2BackwardsCompat()
 
 	-- Suite 2: Sync Protocol (synchronous) — start after backwards finishes
-	C_Timer.After(2, function()
+	_dnl.after(2, function()
 		print(TAG .. "Suite 2/10: Sync Protocol")
 		_dnl.testSync()
 
 		-- Suite 3: Sync End-to-End (async, ~10s) — start after sync unit tests
-		C_Timer.After(1, function()
+		_dnl.after(1, function()
 			print(TAG .. "Suite 3/10: Sync End-to-End")
 			_dnl.testSyncEndToEnd()
 
 			-- SyncE2E takes ~10s (3s + 1s + 2s + 2s nested timers + buffer).
 			-- Suite 4: Integration (async, ~8s) — start after sync e2e finishes
-			C_Timer.After(12, function()
+			_dnl.after(12, function()
 				print(TAG .. "Suite 4/10: Integration")
 				_dnl.testIntegration()
 
 				-- Integration takes ~8s (5s + 2s + 0.5s nested timers).
 				-- Suite 5: Who system (async, ~15s) — start after integration finishes
-				C_Timer.After(12, function()
+				_dnl.after(12, function()
 					print(TAG .. "Suite 5/10: Who System")
 					_dnl.testWho()
 
 					-- Who test takes ~15s (enqueue + user input + 0.5s summary).
-					C_Timer.After(18, function()
+					_dnl.after(18, function()
 						-- Suite 6: UltraHardcore bridge (synchronous + 0.5s summary)
 print(TAG .. "Suite 6/10: UltraHardcore Bridge")
 						_dnl.testUltraHardcore()
 
-						C_Timer.After(2, function()
+						_dnl.after(2, function()
 							-- Suite 7: AttachAddon multi-addon tests (synchronous + 0.5s summary)
 print(TAG .. "Suite 7/10: AttachAddon")
 							_dnl.testAttachAddon()
 
-					C_Timer.After(3, function()
+					_dnl.after(3, function()
 						-- Suite 8: WatchlistQuery (synchronous + 0.5s summary)
 print(TAG .. "Suite 8/10: WatchlistQuery")
 						_dnl.testWatchlistQuery()
 
-					C_Timer.After(3, function()
+					_dnl.after(3, function()
 						-- Suite 9: VersionCheck (synchronous + 0.5s summary)
 						print(TAG .. "Suite 9/10: VersionCheck")
 						_dnl.testVersionCheck()
 
-					C_Timer.After(3, function()
+					_dnl.after(3, function()
 						-- Suite 10: Dedup (async, ~11s) — cross-checksum dedup, late upgrades, ZF scenario
 						print(TAG .. "Suite 10/10: Dedup")
 						_dnl.testDedup()
 
-					C_Timer.After(13, function()
+					_dnl.after(13, function()
 						test_tracking.all_depth = test_tracking.all_depth - 1
 						print(TAG .. "============================================")
 						print(TAG .. "GRAND SUMMARY")
@@ -6201,16 +6212,16 @@ print(TAG .. "Suite 8/10: WatchlistQuery")
 
 					wipe(test_tracking.global_results)
 					testCleanup()
-					end)   -- close C_Timer.After(13, ...) — grand summary
-					end)   -- close C_Timer.After(3, ...) — suite 10 (Dedup)
-					end)   -- close C_Timer.After(3, ...) — suite 9 (VersionCheck)
-					end)   -- close C_Timer.After(3, ...) — suite 8
-					end)   -- close C_Timer.After(2, ...) — suite 7
-					end)   -- close C_Timer.After(18, ...) — suite 6
-				end)       -- close C_Timer.After(12, ...) — suite 5
-			end)           -- close C_Timer.After(12, ...) — suite 4
-		end)               -- close C_Timer.After(1, ...) — suite 3
-	end)                   -- close C_Timer.After(2, ...) — suite 2
+					end)   -- close _dnl.after(13, ...) — grand summary
+					end)   -- close _dnl.after(3, ...) — suite 10 (Dedup)
+					end)   -- close _dnl.after(3, ...) — suite 9 (VersionCheck)
+					end)   -- close _dnl.after(3, ...) — suite 8
+					end)   -- close _dnl.after(2, ...) — suite 7
+					end)   -- close _dnl.after(18, ...) — suite 6
+				end)       -- close _dnl.after(12, ...) — suite 5
+			end)           -- close _dnl.after(12, ...) — suite 4
+		end)               -- close _dnl.after(1, ...) — suite 3
+	end)                   -- close _dnl.after(2, ...) — suite 2
 end
 
 --#region API

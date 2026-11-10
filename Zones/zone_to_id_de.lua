@@ -1,5 +1,5 @@
 -- Auto-generated zone map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -63,7 +63,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.de.ZONE_TO_ID[1] = {
     ["Kosmisch"] = 946,
@@ -86,4 +86,23 @@ do
     ["Insel von Quel'Danas"] = 1957,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.de.ZONE_TO_ID[0]["Vorgebirge von Hillsbrad"] = 1424
+  _dnl.L.de.ZONE_TO_ID[0]["Ashenvale"] = 1440
+  _dnl.L.de.ZONE_TO_ID[0]["Marschen von Dustwallow"] = 1445
+  _dnl.L.de.ZONE_TO_ID[0]["Un'Goro-Krater"] = 1449
+  _dnl.L.de.ZONE_TO_ID[0]["Moonglade"] = 1450
+  _dnl.L.de.ZONE_TO_ID[0]["Winterspring"] = 1452
+  _dnl.L.de.ZONE_TO_ID[0]["Stormwind"] = 1453
+  _dnl.L.de.ZONE_TO_ID[0]["Ironforge"] = 1455
+  _dnl.L.de.ZONE_TO_ID[0]["Thunder Bluff"] = 1456
+  _dnl.L.de.ZONE_TO_ID[0]["Undercity"] = 1458
+  _dnl.L.de.ZONE_TO_ID[0]["Warsongschlucht"] = 1460
+  _dnl.L.de.ZONE_TO_ID[0]["Hyjal"] = 2482
+  _dnl.L.de.ZONE_TO_ID[0]["Insel Zephras"] = 2521
+  _dnl.L.de.ZONE_TO_ID[0]["Darkspear-Inseln"] = 2524
+  _dnl.L.de.ZONE_TO_ID[0]["Flusslande"] = 2548
+  _dnl.L.de.ZONE_TO_ID[0]["Shen'dralas"] = 2652
 end

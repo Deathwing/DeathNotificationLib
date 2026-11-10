@@ -1,4 +1,4 @@
-## Interface: 20506, 11509
+## Interface: 20506, 16001, 11509
 ## Title: DeathNotificationLib
 ## Notes: Death notification and tracking library for Hardcore WoW.
 ## IconTexture: Interface\AddOns\DeathNotificationLib\Media\logo.png
@@ -19,7 +19,7 @@
 ## Category-ruRU: Библиотеки
 ## Category-zhCN: 函数库
 ## Category-zhTW: 函式庫
-## Version: 31
+## Version: 32
 # UNCOMMENT_NEXT_LINE
 # ## OptionalDeps: DeathNotificationLibData, ProfanityLib
 

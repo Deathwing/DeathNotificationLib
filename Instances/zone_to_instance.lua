@@ -1,5 +1,5 @@
 -- Auto-generated zone to instance mapping. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end

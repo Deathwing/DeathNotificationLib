@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.fr.INSTANCE_TO_ID[1] = {
     ["Ouverture de la Porte des ténèbres"] = 269,
@@ -74,4 +74,33 @@ do
     ["Terrasse des Magistères"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Le bassin Incandescent"] = 2720
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Canyon de la Malechute"] = 2784
+  _dnl.L.fr.INSTANCE_TO_ID[0]["La Balafre impure"] = 2789
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Falaises de la Tempête"] = 2791
+  _dnl.L.fr.INSTANCE_TO_ID[0]["La vallée des Cristaux"] = 2804
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Fort des Ombres"] = 2806
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Incendie d’Andorhal"] = 2807
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Refuge des saisons de Météores"] = 2817
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Bosquet du cauchemar"] = 2832
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Défilé de Deuillevent"] = 2853
+  _dnl.L.fr.INSTANCE_TO_ID[0]["L’enclave Écarlate"] = 2856
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Cryptes de Karazhan"] = 2875
+  _dnl.L.fr.INSTANCE_TO_ID[0]["L’Estrade du scarabée"] = 2902
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Naxxramas"] = 2921
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Cité de Dalaran"] = 2959
+  _dnl.L.fr.INSTANCE_TO_ID[0]["La cité Submergée"] = 2970
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Repaire des Noiregueules"] = 2974
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Prison d’Alcaz"] = 2994
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Îles des Sombrelances"] = 2997
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Excavations : les Paluns"] = 2998
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Ruines de Lordaeron"] = 2999
+  _dnl.L.fr.INSTANCE_TO_ID[0]["La terrasse du Façonneur"] = 3001
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Bataille de Gilnéas"] = 3005
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Bastion Krol’dok"] = 3039
+  _dnl.L.fr.INSTANCE_TO_ID[0]["La salle des Thanes"] = 3065
+  _dnl.L.fr.INSTANCE_TO_ID[0]["Manoir Mantebrume"] = 3109
 end

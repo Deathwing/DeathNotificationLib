@@ -240,7 +240,7 @@ local function importHistory()
 		end
 
 		if idx < #pending then
-			C_Timer.After(0, processBatch)
+			_dnl.after(0, processBatch)
 			return
 		end
 
@@ -266,7 +266,7 @@ local function importHistory()
 			end
 
 			if ci < #commit_list then
-				C_Timer.After(0, commitBatch)
+				_dnl.after(0, commitBatch)
 			elseif new_count > 0 and _dnl.DEBUG then
 				print("[DNL~HardcoreTBC] Imported " .. new_count .. " deaths from HardcoreTBC history")
 			end
@@ -367,7 +367,7 @@ end
 local RESCAN_INTERVAL = 300  -- 5 minutes
 
 local function startPeriodicRescan()
-	C_Timer.NewTicker(RESCAN_INTERVAL, function()
+	_dnl.newTicker(RESCAN_INTERVAL, function()
 		if not HardcoreTBC_DistributedLogDB then return end
 
 		local cutoff = GetServerTime() - HISTORY_WINDOW
@@ -413,7 +413,7 @@ local function startPeriodicRescan()
 			end
 
 			if idx < #pending then
-				C_Timer.After(0, processBatch)
+				_dnl.after(0, processBatch)
 				return
 			end
 
@@ -438,7 +438,7 @@ local function startPeriodicRescan()
 				end
 
 				if ci < #commit_list then
-					C_Timer.After(0, commitBatch)
+					_dnl.after(0, commitBatch)
 				elseif new_count > 0 and _dnl.DEBUG then
 					print("[DNL~HardcoreTBC] Periodic re-scan: " .. new_count .. " new")
 				end
@@ -461,7 +461,7 @@ end
 -- so all addons (including HardcoreTBC) are guaranteed to be fully
 -- initialised by this point.  Unlike PLAYER_ENTERING_WORLD it does not
 -- re-fire on zone transitions or reloads, so no guard is needed.
-local initFrame = CreateFrame("Frame")
+local initFrame = _dnl.createFrame("Frame")
 initFrame:RegisterEvent("PLAYER_LOGIN")
 
 initFrame:SetScript("OnEvent", function(self, event, ...)
@@ -484,5 +484,5 @@ initFrame:SetScript("OnEvent", function(self, event, ...)
 
 	-- Import existing deaths after a short delay so HardcoreTBC's
 	-- EventManager has time to finish initialization + markIgnored()
-	C_Timer.After(10.0, importHistory)
+	_dnl.after(10.0, importHistory)
 end)

@@ -214,7 +214,7 @@ end
 -- Event handler
 ---------------------------------------------------------------------------
 
-local handlerFrame = CreateFrame("Frame")
+local handlerFrame = _dnl.createFrame("Frame")
 handlerFrame:RegisterEvent("PLAYER_LOGIN")
 
 handlerFrame:SetScript("OnEvent", function(self, event, ...)
@@ -235,7 +235,7 @@ handlerFrame:SetScript("OnEvent", function(self, event, ...)
 		self:RegisterEvent("CHAT_MSG_EMOTE")
 
 		-- Periodic cleanup of the dedup table
-		C_Timer.NewTicker(CLEANUP_INTERVAL, function()
+		_dnl.newTicker(CLEANUP_INTERVAL, function()
 			local cutoff_bucket = math.floor(GetServerTime() / 10) - 3 -- keep ~30s window
 			for k in pairs(processed) do
 				-- Extract the time bucket from the key (last colon-separated segment)

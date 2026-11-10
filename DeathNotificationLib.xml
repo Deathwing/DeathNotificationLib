@@ -56,6 +56,16 @@
   <Script file="NPCs\npc_to_id_ko.lua"/>
   <Script file="NPCs\npc_to_id_pt.lua"/>
   <Script file="NPCs\npc_to_id_ru.lua"/>
+  <Script file="NPCs\forever_npc_cn.lua"/>
+  <Script file="NPCs\forever_npc_de.lua"/>
+  <Script file="NPCs\forever_npc_en.lua"/>
+  <Script file="NPCs\forever_npc_es.lua"/>
+  <Script file="NPCs\forever_npc_fr.lua"/>
+  <Script file="NPCs\forever_npc_it.lua"/>
+  <Script file="NPCs\forever_npc_ko.lua"/>
+  <Script file="NPCs\forever_npc_pt.lua"/>
+  <Script file="NPCs\forever_npc_ru.lua"/>
+  <Script file="NPCs\forever_display_id.lua"/>
 
   <!-- Data: Locales -->
   <Script file="Locales\strings_cn.lua"/>

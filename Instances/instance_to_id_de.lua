@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.de.INSTANCE_TO_ID[1] = {
     ["Öffnung des Dunklen Portals"] = 269,
@@ -74,4 +74,42 @@ do
     ["Terrasse der Magister"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.de.INSTANCE_TO_ID[0]["Burg Shadowfang"] = 33
+  _dnl.L.de.INSTANCE_TO_ID[0]["Verlies von Stormwind"] = 34
+  _dnl.L.de.INSTANCE_TO_ID[0]["Kral von Razorfen"] = 47
+  _dnl.L.de.INSTANCE_TO_ID[0]["Blackfathom-Tiefe"] = 48
+  _dnl.L.de.INSTANCE_TO_ID[0]["Hügel von Razorfen"] = 129
+  _dnl.L.de.INSTANCE_TO_ID[0]["Blackrockspitze"] = 229
+  _dnl.L.de.INSTANCE_TO_ID[0]["Blackrocktiefen"] = 230
+  _dnl.L.de.INSTANCE_TO_ID[0]["Ragefireabgrund"] = 389
+  _dnl.L.de.INSTANCE_TO_ID[0]["Warsongschlucht"] = 489
+  _dnl.L.de.INSTANCE_TO_ID[0]["Das Sengende Becken"] = 2720
+  _dnl.L.de.INSTANCE_TO_ID[0]["Demonfall-Canyon"] = 2784
+  _dnl.L.de.INSTANCE_TO_ID[0]["Faulende Narbe"] = 2789
+  _dnl.L.de.INSTANCE_TO_ID[0]["Sturmklippen"] = 2791
+  _dnl.L.de.INSTANCE_TO_ID[0]["Kristalltal"] = 2804
+  _dnl.L.de.INSTANCE_TO_ID[0]["Schattenfeste"] = 2806
+  _dnl.L.de.INSTANCE_TO_ID[0]["Brand von Andorhal"] = 2807
+  _dnl.L.de.INSTANCE_TO_ID[0]["Grabhügel von Starfall"] = 2817
+  _dnl.L.de.INSTANCE_TO_ID[0]["Alptraumhain"] = 2832
+  _dnl.L.de.INSTANCE_TO_ID[0]["Gebirgspass der Totenwinde"] = 2853
+  _dnl.L.de.INSTANCE_TO_ID[0]["Scharlachrote Enklave"] = 2856
+  _dnl.L.de.INSTANCE_TO_ID[0]["Karazhangruften"] = 2875
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Skarabäushöhe"] = 2902
+  _dnl.L.de.INSTANCE_TO_ID[0]["Naxxramas"] = 2921
+  _dnl.L.de.INSTANCE_TO_ID[0]["Dalaran"] = 2959
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Versunkene Stadt"] = 2970
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Schwarzschlundfeste"] = 2974
+  _dnl.L.de.INSTANCE_TO_ID[0]["Gefängnis von Alcaz"] = 2994
+  _dnl.L.de.INSTANCE_TO_ID[0]["Darkspear-Inseln"] = 2997
+  _dnl.L.de.INSTANCE_TO_ID[0]["Ausgrabungsstätte: Sumpfland"] = 2998
+  _dnl.L.de.INSTANCE_TO_ID[0]["Ruinen von Lordaeron"] = 2999
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Terrasse des Formers"] = 3001
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Schlacht um Gilneas"] = 3005
+  _dnl.L.de.INSTANCE_TO_ID[0]["Feste Krol'dok"] = 3039
+  _dnl.L.de.INSTANCE_TO_ID[0]["Die Halle der Thanen"] = 3065
+  _dnl.L.de.INSTANCE_TO_ID[0]["Anwesen der Mistmantles"] = 3109
 end

@@ -1,4 +1,4 @@
-## Interface: 20506, 11509
+## Interface: 20506, 16001, 11509
 ## Title: DeathNotificationLib Data
 ## Notes: Precomputed heatmap data for DeathNotificationLib.
 ## IconTexture: Interface\AddOns\DeathNotificationLibData\Media\logo.png
@@ -19,6 +19,11 @@
 ## Category-ruRU: Библиотеки
 ## Category-zhCN: 函数库
 ## Category-zhTW: 函式庫
-## Version: 10000
+## Version: 10001
 
-DeathNotificationLibData.xml
+DeathNotificationLibData~Init.lua [AllowLoadGameType vanilla, tbc, camelot]
+Heatmaps/heatmap_vanilla.lua [AllowLoadGameType vanilla]
+Heatmaps/heatmap_tbc.lua [AllowLoadGameType tbc]
+Heatmaps/heatmap_forever.lua [AllowLoadGameType camelot][ExcludeLoadGameType standard, classic]
+DeathNotificationLibData~Tables.lua [AllowLoadGameType vanilla, tbc, camelot]
+DeathNotificationLibData~Finalizer.lua [AllowLoadGameType vanilla, tbc, camelot]

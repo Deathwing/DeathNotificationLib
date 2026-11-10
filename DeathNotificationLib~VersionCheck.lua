@@ -92,21 +92,12 @@ local last_announce_time = {}
 -- Helpers
 ---------------------------------------------------------------------------
 
----Send an addon message via ChatThrottleLib if available, else raw.
 ---@param prefix string  Addon message prefix
 ---@param text string    Message body
 ---@param chatType string  "PARTY", "RAID", "GUILD", "INSTANCE_CHAT", or "WHISPER"
 ---@param target string|nil  Required for WHISPER
 local function sendAddonMsg(prefix, text, chatType, target)
-	if _G.ChatThrottleLib then
-		_G.ChatThrottleLib:SendAddonMessage("BULK", prefix, text, chatType, target)
-	else
-		if target then
-			_G.SendAddonMessage(prefix, text, chatType, target)
-		else
-			_G.SendAddonMessage(prefix, text, chatType)
-		end
-	end
+	_dnl.sendAddonMessage("BULK", prefix, text, chatType, target)
 end
 
 ---------------------------------------------------------------------------
@@ -261,7 +252,7 @@ end
 ---to let the client settle, then broadcasts version.
 function _dnl.versionCheckOnSocialJoin()
 	-- Small delay so channel membership is fully established
-	C_Timer.After(3, announceOnAllChannels)
+	_dnl.after(3, announceOnAllChannels)
 end
 
 ---------------------------------------------------------------------------

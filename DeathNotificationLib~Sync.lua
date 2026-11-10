@@ -20,8 +20,6 @@ Protocol commands (all prefixed with COMM_COMMAND_DELIM "$"):
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
 
-local CTL = _G.ChatThrottleLib
-
 ---------------------------------------------------------------------------
 -- Constants
 ---------------------------------------------------------------------------
@@ -250,15 +248,11 @@ local function sendNextInQueue()
 	end
 end
 
----Send an addon whisper via CTL (NORMAL priority for control messages).
+---Send an addon whisper (NORMAL priority for control messages).
 ---@param target string  Player name (or Name-Realm)
 ---@param text string    Full message including command prefix
 local function sendAddonWhisper(target, text)
-	if CTL then
-		CTL:SendAddonMessage("NORMAL", _dnl.SYNC_COMM_NAME, text, "WHISPER", target)
-	else
-		_G.SendAddonMessage(_dnl.SYNC_COMM_NAME, text, "WHISPER", target)
-	end
+	_dnl.sendAddonMessage("NORMAL", _dnl.SYNC_COMM_NAME, text, "WHISPER", target)
 end
 
 ---Cancel a timer handle safely.
@@ -293,7 +287,7 @@ end
 --- we force-reset to prevent the state machine from getting stuck.
 local function startAbsoluteTimeout()
 	cancelTimer(absolute_timer)
-	absolute_timer = C_Timer.NewTimer(ABSOLUTE_TIMEOUT, function()
+	absolute_timer = _dnl.newTimer(ABSOLUTE_TIMEOUT, function()
 		absolute_timer = nil
 		if state ~= SYNC_STATE.IDLE then
 			if debug then
@@ -583,7 +577,7 @@ function _dnl.handleSyncWatermark(sender, payload)
 	end
 
 	cancelTimer(collect_timer)
-	collect_timer = C_Timer.NewTimer(WATERMARK_COLLECT_WINDOW, function()
+	collect_timer = _dnl.newTimer(WATERMARK_COLLECT_WINDOW, function()
 		collect_timer = nil
 		_dnl._syncPickPeerAndJitter()
 	end)
@@ -648,7 +642,7 @@ function _dnl._syncPickPeerAndJitter()
 	end
 
 	cancelTimer(jitter_timer)
-	jitter_timer = C_Timer.NewTimer(jitter, function()
+	jitter_timer = _dnl.newTimer(jitter, function()
 		jitter_timer = nil
 		_dnl._syncSendBucketRequest()
 	end)
@@ -739,7 +733,7 @@ function _dnl._syncSendBucketRequest()
 		is_first = false
 
 		if idx <= #sorted then
-			C_Timer.After(0.1, sendNextChunk)
+			_dnl.after(0.1, sendNextChunk)
 		end
 	end
 
@@ -747,7 +741,7 @@ function _dnl._syncSendBucketRequest()
 
 	-- Timeout: if no entries arrive, finish
 	cancelTimer(response_timer)
-	response_timer = C_Timer.NewTimer(RESPONSE_TIMEOUT, function()
+	response_timer = _dnl.newTimer(RESPONSE_TIMEOUT, function()
 		response_timer = nil
 		if state == SYNC_STATE.AWAITING_ENTRIES then
 			_dnl._syncFinish("timeout")
@@ -837,7 +831,7 @@ function _dnl.handleSyncBucketRequest(sender, payload)
 	-- Start a safety timeout so the state machine doesn't stick
 	-- in RESPONDING_ENTRIES if sendNextBatch errors or stalls.
 	cancelTimer(responding_timer)
-	responding_timer = C_Timer.NewTimer(RESPONDING_TIMEOUT, function()
+	responding_timer = _dnl.newTimer(RESPONDING_TIMEOUT, function()
 		responding_timer = nil
 		if state == SYNC_STATE.RESPONDING_ENTRIES then
 			if debug then
@@ -980,7 +974,7 @@ function _dnl.handleSyncBucketRequest(sender, payload)
 		msgs_this_batch = msgs_this_batch + 1
 
 		if send_idx <= #to_send then
-			C_Timer.After(0.1, sendNextBatch)
+			_dnl.after(0.1, sendNextBatch)
 		else
 			cancelTimer(responding_timer)
 			responding_timer = nil
@@ -1079,7 +1073,7 @@ local function drainSyncBacklog()
 		processed = processed + 1
 	end
 	if #sync_entry_backlog > 0 then
-		C_Timer.After(0.05, drainSyncBacklog)
+		_dnl.after(0.05, drainSyncBacklog)
 	end
 end
 
@@ -1110,13 +1104,13 @@ function _dnl.handleSyncEntry(sender, payload)
 		sync_entry_backlog[#sync_entry_backlog + 1] = { single_payload, tag }
 	end
 	if was_empty and #sync_entry_backlog > 0 then
-		C_Timer.After(0.05, drainSyncBacklog)
+		_dnl.after(0.05, drainSyncBacklog)
 	end
 
 	-- If we're the active requester, reset the response timeout on each entry
 	if state == SYNC_STATE.AWAITING_ENTRIES then
 		cancelTimer(response_timer)
-		response_timer = C_Timer.NewTimer(RESPONSE_TIMEOUT, function()
+		response_timer = _dnl.newTimer(RESPONSE_TIMEOUT, function()
 			response_timer = nil
 			_dnl._syncFinish("complete")
 		end)
@@ -1186,7 +1180,7 @@ function _dnl.joinSyncChannel()
 		return
 	end
 
-	C_Timer.After(3.0, function()
+	_dnl.after(3.0, function()
 		if GetChannelName(channel_name) == 0 then
 			JoinChannelByName(channel_name, SYNC_CHANNEL_PW, nil, false)
 		end
@@ -1195,7 +1189,7 @@ function _dnl.joinSyncChannel()
 	_dnl.hideChannelFromChatFrames(channel_name)
 
 	local remaining = sync_channel_join_attempts
-	C_Timer.NewTicker(4, function(self)
+	_dnl.newTicker(4, function(self)
 		if remaining < 1 then
 			self:Cancel()
 			return
@@ -1242,19 +1236,19 @@ function _dnl._startSyncWatermarkTicker()
 	-- Jitter the first watermark (10-40s) so clients that log in at
 	-- the same time don't all broadcast simultaneously.
 	local initial_delay = 10 + math.random() * 30
-	C_Timer.After(initial_delay, broadcastWatermark)
+	_dnl.after(initial_delay, broadcastWatermark)
 
 	-- Jitter ongoing ticks by ±20% to prevent phase-locking.
 	-- C_Timer.NewTicker fires at a fixed rate, so we re-schedule
 	-- ourselves with a randomised delay each time instead.
 	local function scheduleNext()
 		local jittered = min_interval * (0.8 + math.random() * 0.4)
-		watermark_ticker = C_Timer.NewTimer(jittered, function()
+		watermark_ticker = _dnl.newTimer(jittered, function()
 			broadcastWatermark()
 			scheduleNext()
 		end)
 	end
-	C_Timer.After(initial_delay + 1, scheduleNext)
+	_dnl.after(initial_delay + 1, scheduleNext)
 
 	if debug then
 		print(string.format("[DNL Sync] Watermark ticker started (base interval: %ds, initial delay: %.0fs)",

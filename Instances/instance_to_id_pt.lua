@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.pt.INSTANCE_TO_ID[1] = {
     ["Abertura do Portal Negro"] = 269,
@@ -74,4 +74,33 @@ do
     ["Terraço dos Magísteres"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Baía Abrasadora"] = 2720
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Cânion do Demônio Caído"] = 2784
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Rasgo Infecto"] = 2789
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Penhascos Tempestuosos"] = 2791
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Vale de Cristal"] = 2804
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Fortaleza do Concílio das Sombras"] = 2806
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Incêndio de Andorhal"] = 2807
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Gruta da Chuva Estelar"] = 2817
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Bosque do Pesadelo"] = 2832
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Trilha do Vento Morto"] = 2853
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Enclave Escarlate"] = 2856
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Criptas de Karazhan"] = 2875
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Palanque do Escaravelho"] = 2902
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Naxxramas"] = 2921
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Dalaran"] = 2959
+  _dnl.L.pt.INSTANCE_TO_ID[0]["A Cidade Afogada"] = 2970
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Gruta Bocanera"] = 2974
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Prisão de Alcaz"] = 2994
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Ilhas Lançanegra"] = 2997
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Sítio de Escavação: Pantanal"] = 2998
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Ruínas de Lordaeron"] = 2999
+  _dnl.L.pt.INSTANCE_TO_ID[0]["O Terraço do Moldador"] = 3001
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Batalha por Guilnéas"] = 3005
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Fortaleza de Krol'Dok"] = 3039
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Salão dos Thanes"] = 3065
+  _dnl.L.pt.INSTANCE_TO_ID[0]["Casarão dos Brumanto"] = 3109
 end

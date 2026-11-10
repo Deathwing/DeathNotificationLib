@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.es.INSTANCE_TO_ID[1] = {
     ["Apertura de El Portal Oscuro"] = 269,
@@ -74,4 +74,33 @@ do
     ["Bancal del Magister"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.es.INSTANCE_TO_ID[0]["La Cuenca Abrasadora"] = 2720
+  _dnl.L.es.INSTANCE_TO_ID[0]["Barranco del Demonio"] = 2784
+  _dnl.L.es.INSTANCE_TO_ID[0]["Escara Impía"] = 2789
+  _dnl.L.es.INSTANCE_TO_ID[0]["Acantilados de la Tormenta"] = 2791
+  _dnl.L.es.INSTANCE_TO_ID[0]["La Vega de Cristal"] = 2804
+  _dnl.L.es.INSTANCE_TO_ID[0]["Guarida Sombría"] = 2806
+  _dnl.L.es.INSTANCE_TO_ID[0]["El incendio de Andorhal"] = 2807
+  _dnl.L.es.INSTANCE_TO_ID[0]["Túmulo Lluvia de Estrellas"] = 2817
+  _dnl.L.es.INSTANCE_TO_ID[0]["Arboleda de las Pesadillas"] = 2832
+  _dnl.L.es.INSTANCE_TO_ID[0]["Paso de la Muerte"] = 2853
+  _dnl.L.es.INSTANCE_TO_ID[0]["Enclave Escarlata"] = 2856
+  _dnl.L.es.INSTANCE_TO_ID[0]["Criptas de Karazhan"] = 2875
+  _dnl.L.es.INSTANCE_TO_ID[0]["Estrado del Escarabajo"] = 2902
+  _dnl.L.es.INSTANCE_TO_ID[0]["Naxxramas"] = 2921
+  _dnl.L.es.INSTANCE_TO_ID[0]["Ciudad de Dalaran"] = 2959
+  _dnl.L.es.INSTANCE_TO_ID[0]["La Ciudad Anegada"] = 2970
+  _dnl.L.es.INSTANCE_TO_ID[0]["Bastión Faucenegra"] = 2974
+  _dnl.L.es.INSTANCE_TO_ID[0]["Prisión de Alcaz"] = 2994
+  _dnl.L.es.INSTANCE_TO_ID[0]["Islas Lanza Negra"] = 2997
+  _dnl.L.es.INSTANCE_TO_ID[0]["Sitio de Excavación: Los Humedales"] = 2998
+  _dnl.L.es.INSTANCE_TO_ID[0]["Ruinas de Lordaeron"] = 2999
+  _dnl.L.es.INSTANCE_TO_ID[0]["El Bancal del Creador"] = 3001
+  _dnl.L.es.INSTANCE_TO_ID[0]["La Batalla por Gilneas"] = 3005
+  _dnl.L.es.INSTANCE_TO_ID[0]["Bastión de Krol'dok"] = 3039
+  _dnl.L.es.INSTANCE_TO_ID[0]["El Salón de Señores Feudales"] = 3065
+  _dnl.L.es.INSTANCE_TO_ID[0]["Mansión Mantoniebla"] = 3109
 end

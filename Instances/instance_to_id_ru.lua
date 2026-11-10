@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.ru.INSTANCE_TO_ID[1] = {
     ["Открытие Темного портала"] = 269,
@@ -74,4 +74,34 @@ do
     ["Терраса Магистров"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Огненная пропасть"] = 389
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Тлеющая низина"] = 2720
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Каньон Гибели Демона"] = 2784
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Гниющий Шрам"] = 2789
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Штормовые утесы"] = 2791
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Долина Кристаллов"] = 2804
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Оплот Теней"] = 2806
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Горящие руины Андорала"] = 2807
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Обитель Звездопада"] = 2817
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Роща Кошмаров"] = 2832
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Перевал Мертвого Ветра"] = 2853
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Анклав Алого ордена"] = 2856
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Склепы Каражана"] = 2875
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Помост Скарабея"] = 2902
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Наксрамас"] = 2921
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Даларан"] = 2959
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Затонувший город"] = 2970
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Крепость Черночревов"] = 2974
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Тюрьма Алькац"] = 2994
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Острова Черного Копья"] = 2997
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Раскопки: Болотина"] = 2998
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Руины Лордерона"] = 2999
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Терраса Создателя"] = 3001
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Битва за Гилнеас"] = 3005
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Крепость Крол'док"] = 3039
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Чертоги танов"] = 3065
+  _dnl.L.ru.INSTANCE_TO_ID[0]["Поместье Мистмантла"] = 3109
 end

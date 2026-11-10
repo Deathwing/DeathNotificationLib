@@ -1,1 +1,2 @@
-if DeathNotificationLibData.Internal then DeathNotificationLibData.Internal = nil end
+local lib = DeathNotificationLibData
+if lib and lib.Internal then lib.Internal = nil end

@@ -1,5 +1,5 @@
 -- Auto-generated zone map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -63,7 +63,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.ko.ZONE_TO_ID[1] = {
     ["우주"] = 946,
@@ -86,4 +86,12 @@ do
     ["쿠엘다나스 섬"] = 1957,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.ko.ZONE_TO_ID[0]["하이잘 산"] = 2482
+  _dnl.L.ko.ZONE_TO_ID[0]["제프라스 섬"] = 2521
+  _dnl.L.ko.ZONE_TO_ID[0]["검은창 군도"] = 2524
+  _dnl.L.ko.ZONE_TO_ID[0]["강물터"] = 2548
+  _dnl.L.ko.ZONE_TO_ID[0]["셴드랄라스"] = 2652
 end

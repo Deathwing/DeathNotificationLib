@@ -2,4 +2,5 @@
 DeathNotificationLib~Finalizer.lua
 --]]
 
-if DeathNotificationLib.Internal then DeathNotificationLib.Internal = nil end
+local lib = DeathNotificationLib
+if lib and lib.Internal then lib.Internal = nil end

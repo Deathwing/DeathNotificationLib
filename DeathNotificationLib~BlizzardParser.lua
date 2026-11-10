@@ -183,6 +183,10 @@ end)
 ---@return string|nil area
 ---@return number|nil level
 ---@return string|nil pvp_source_name
+function _dnl.canParseBlizzardDeaths()
+	return #matchers > 0
+end
+
 function _dnl.parse_hc_death_broadcast(msg)
 	for i = 1, #matchers do
 		local m = matchers[i]

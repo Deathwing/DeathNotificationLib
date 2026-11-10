@@ -1,5 +1,5 @@
 -- Auto-generated zone map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -63,7 +63,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.fr.ZONE_TO_ID[1] = {
     ["Cosmique"] = 946,
@@ -86,4 +86,16 @@ do
     ["Île de Quel’Danas"] = 1957,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.fr.ZONE_TO_ID[0]["Maleterres de l’ouest"] = 1422
+  _dnl.L.fr.ZONE_TO_ID[0]["Berceau-de-l’Hiver"] = 1452
+  _dnl.L.fr.ZONE_TO_ID[0]["Thunder Bluff"] = 1456
+  _dnl.L.fr.ZONE_TO_ID[0]["Goulet des Warsong"] = 1460
+  _dnl.L.fr.ZONE_TO_ID[0]["Mont Hyjal"] = 2482
+  _dnl.L.fr.ZONE_TO_ID[0]["Île de Zéphras"] = 2521
+  _dnl.L.fr.ZONE_TO_ID[0]["Îles des Sombrelances"] = 2524
+  _dnl.L.fr.ZONE_TO_ID[0]["Rives Claires"] = 2548
+  _dnl.L.fr.ZONE_TO_ID[0]["Shen’dralas"] = 2652
 end

@@ -32,30 +32,34 @@ local SOURCE = _dnl.SOURCE
 --- passes validatePlayerData after the hook returns, the changes are
 --- accepted; otherwise the copy is discarded and the original is kept.
 ---@type fun(player_data: PlayerData)[] 
-local hook_self_death_functions = {}
-
-local CTL = _G.ChatThrottleLib
+local state = DeathNotificationLib.State
+state.hook_self_death_functions = state.hook_self_death_functions or {}
+local hook_self_death_functions = state.hook_self_death_functions
 
 local comm_query_locks = {}
 local last_playtime = 0
 local last_playtime_updated_at = GetServerTime()
 local playtime_suppression_counter = 0
-local displayTimePlayed = ChatFrameUtil and ChatFrameUtil.DisplayTimePlayed or ChatFrame_DisplayTimePlayed
+local playtime_muted_chat_frames = {}
 
-local function displayTimePlayedOverride(...)
-	if playtime_suppression_counter > 0 then
-		return
+local function muteTimePlayedChatFrames()
+	for i = 1, NUM_CHAT_WINDOWS or 10 do
+		local frame = _G["ChatFrame" .. i]
+		if frame and frame:IsEventRegistered("TIME_PLAYED_MSG") then
+			frame:UnregisterEvent("TIME_PLAYED_MSG")
+			playtime_muted_chat_frames[#playtime_muted_chat_frames + 1] = frame
+		end
 	end
-	return displayTimePlayed(...)
 end
 
-if ChatFrameUtil and ChatFrameUtil.DisplayTimePlayed then
-	ChatFrameUtil.DisplayTimePlayed = displayTimePlayedOverride
-else
-	ChatFrame_DisplayTimePlayed = displayTimePlayedOverride
+local function unmuteTimePlayedChatFrames()
+	for i = #playtime_muted_chat_frames, 1, -1 do
+		playtime_muted_chat_frames[i]:RegisterEvent("TIME_PLAYED_MSG")
+		playtime_muted_chat_frames[i] = nil
+	end
 end
 
-hooksecurefunc("StaticPopup_Show", function(which, text_arg1, text_arg2, data)
+_dnl.hookSecureFunc("StaticPopup_Show", function(which, text_arg1, text_arg2, data)
 	if data and type(data) == "string" then
 		if string.find(data, _dnl.DEATH_ALERTS_CHANNEL_BASE) == 1 or string.find(data, _dnl.SYNC_CHANNEL_BASE) == 1 then
 			StaticPopup_Hide(which)
@@ -68,6 +72,7 @@ local function getPlaytime()
 end
 
 local function requestTimePlayed()
+	muteTimePlayedChatFrames()
 	playtime_suppression_counter = playtime_suppression_counter + 1
 	RequestTimePlayed()
 end
@@ -119,7 +124,7 @@ local function updateChannels()
 
 	if channelName and _dnl.anyAddonEnables("auto_blizzard_deaths") then
 		if GetChannelName(channelName) == 0 then
-			C_Timer.After(2.5, function()
+			_dnl.after(2.5, function()
 				if GetChannelName(channelName) == 0 then
 					JoinChannelByName(channelName, nil, nil, false)
 				end
@@ -238,11 +243,7 @@ local function onChatMsgChannel(arg)
 				if encoded then
 					local resp_prefix = query_tag .. _dnl.COMM_FIELD_DELIM
 					local commMessage = _dnl.COMM_QUERY_ACK .. _dnl.COMM_COMMAND_DELIM .. resp_prefix .. encoded
-					if CTL then
-						CTL:SendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, "WHISPER", sender_full)
-					else
-						_G.SendAddonMessage(_dnl.COMM_NAME, commMessage, "WHISPER", sender_full)
-					end
+					_dnl.sendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, "WHISPER", sender_full)
 					response_count = response_count + 1
 				end
 			end
@@ -286,8 +287,9 @@ local function onCombatLogEventUnfiltered(arg)
 		if ev ~= "DAMAGE_SHIELD_MISSED" and string.find(ev, "DAMAGE") ~= nil then
 			local target = UnitTokenFromGUID(target_guid)
 			if _dnl.canUseUnitStates(target) then
+				if source_guid == "" then source_guid = nil end
 				local source_token = source_guid and UnitTokenFromGUID(source_guid)
-				local source = source_name or (source_guid and GetUnitNameByGUID(source_guid)) or UNKNOWN
+				local source = source_name or (source_token and UnitName(source_token)) or UNKNOWN
 
 				local unit_state = _dnl.getUnitState(target)
 				unit_state.last_attack_source_name = source
@@ -298,33 +300,69 @@ local function onCombatLogEventUnfiltered(arg)
 	end
 end
 
+---@param unit_state table
+---@return boolean
+local function applyDeathRecapSource(unit_state)
+	local events = C_DeathRecap.GetRecapEvents()
+	local killing_blow = events and events[1]
+	if not killing_blow or not killing_blow.timestamp or math.abs(GetServerTime() - killing_blow.timestamp) > 60 then
+		return false
+	end
+
+	if killing_blow.event == "ENVIRONMENTAL_DAMAGE" and killing_blow.environmentalType then
+		local environmental_type = killing_blow.environmentalType:lower()
+		unit_state.last_attack_source_name = environmental_type:sub(1, 1):upper() .. environmental_type:sub(2)
+		unit_state.last_attack_source_guid = nil
+	else
+		unit_state.last_attack_source_name = killing_blow.sourceName
+		unit_state.last_attack_source_guid = killing_blow.sourceGUID
+	end
+	unit_state.last_attack_source_health = nil
+	return true
+end
+
+---@return table
+local function snapshotPlayerDeath()
+	local instance_id, map, position = _dnl.guessLocationForUnit("player")
+	return {
+		level = UnitLevel("player"),
+		guild = GetGuildInfo("player"),
+		instance_id = instance_id,
+		map = map,
+		pos_str = position and string.format("%.4f,%.4f", position.x, position.y) or nil,
+		time = GetServerTime(),
+		recent_msg = _dnl.getUnitState("player").recent_msg,
+	}
+end
+
 ---@param arg table
-local function onPlayerDead(arg)
-	if not _dnl.shouldBroadcastDeath("player") then return end
+---@param snapshot table|nil  death-time values captured by the deferred recap path
+local function onPlayerDead(arg, snapshot)
+	if not snapshot then
+		if not _dnl.shouldBroadcastDeath("player") then return end
+		snapshot = snapshotPlayerDeath()
+	end
 
 	local userState = _dnl.getUnitState("player")
 
 	local death_source, extra_data = _dnl.resolveDeathSource(userState.last_attack_source_name, userState.last_attack_source_guid, userState.last_attack_source_health)
-	local instance_id, map, position = _dnl.guessLocationForUnit("player")
-	local pos_str = position and string.format("%.4f,%.4f", position.x, position.y) or nil
 
 	local _, _, race_id = UnitRace("player")
 	local _, _, class_id = UnitClass("player")
-	local guildName = GetGuildInfo("player")
 
 	local player_data = _dnl.playerData(
 		UnitName("player"),
-		guildName,
+		snapshot.guild,
 		death_source,
 		race_id,
 		class_id,
-		UnitLevel("player"),
-		instance_id,
-		map,
-		pos_str,
-		GetServerTime(),
+		snapshot.level,
+		snapshot.instance_id,
+		snapshot.map,
+		snapshot.pos_str,
+		snapshot.time,
 		getPlaytime(),
-		userState.recent_msg,
+		snapshot.recent_msg,
 		extra_data
 	)
 
@@ -378,11 +416,11 @@ local function initializeOnFirstReady()
 	_pew_initialized = true
 	_dnl.refreshGuildMembers()
 	requestTimePlayed()
-	C_Timer.After(0.5, function()
+	_dnl.after(0.5, function()
 		_dnl.deathlogJoinChannel()
 		_dnl.joinSyncChannel()
 	end)
-	C_Timer.NewTicker(60, requestTimePlayed)
+	_dnl.newTicker(60, requestTimePlayed)
 	updateChannels()
 	_dnl.versionCheckOnSocialJoin()
 end
@@ -448,7 +486,7 @@ local function onChatMsgAddon(arg)
 		if comm_query_locks[query_sender] then
 			return
 		end
-		comm_query_locks[query_sender] = C_Timer.NewTimer(3, function()
+		comm_query_locks[query_sender] = _dnl.newTimer(3, function()
 			comm_query_locks[query_sender]:Cancel()
 			comm_query_locks[query_sender] = nil
 		end)
@@ -478,11 +516,7 @@ local function onChatMsgAddon(arg)
 			if encoded then
 				local resp_prefix = found_tag and (found_tag .. _dnl.COMM_FIELD_DELIM) or ""
 				local commMessage = _dnl.COMM_QUERY_ACK .. _dnl.COMM_COMMAND_DELIM .. resp_prefix .. encoded
-				if CTL then
-					CTL:SendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, "WHISPER", arg[4])
-				else
-					_G.SendAddonMessage(_dnl.COMM_NAME, commMessage, "WHISPER", arg[4])
-				end
+				_dnl.sendAddonMessage("BULK", _dnl.COMM_NAME, commMessage, "WHISPER", arg[4])
 			end
 		end
 	elseif command == _dnl.COMM_QUERY_ACK then
@@ -517,13 +551,16 @@ local function onTimePlayedMsg(arg)
 	last_playtime = arg[1]
 	last_playtime_updated_at = GetServerTime()
 
-	C_Timer.After(0, function()
+	_dnl.after(0, function()
 		if playtime_suppression_counter > 0 then
 			playtime_suppression_counter = playtime_suppression_counter - 1
 
 			if _dnl.DEBUG then
 				print("Received new time played:", last_playtime)
 			end
+		end
+		if playtime_suppression_counter == 0 then
+			unmuteTimePlayedChatFrames()
 		end
 	end)
 end
@@ -626,7 +663,7 @@ local function onChatMsgMonsterEmote(arg)
 			reportOrEnqueue()
 		end)
 
-		C_Timer.After(5.0, function()
+		_dnl.after(5.0, function()
 			cancelWho()
 			reportOrEnqueue()
 		end)
@@ -662,9 +699,32 @@ local function handleEvent(self, event, ...)
 	end
 end
 
-local death_notification_lib_event_handler = CreateFrame("Frame")
+if not CombatLogGetCurrentEventInfo then
+	dispatch["COMBAT_LOG_EVENT_UNFILTERED"] = nil
+
+	if C_DeathRecap and C_DeathRecap.GetRecapEvents then
+		local RECAP_POLL_INTERVAL, RECAP_POLL_ATTEMPTS = 0.25, 12
+		_dnl.PLAYER_DEAD_SETTLE_DELAY = RECAP_POLL_INTERVAL * RECAP_POLL_ATTEMPTS
+		dispatch["PLAYER_DEAD"] = function(arg)
+			if not _dnl.shouldBroadcastDeath("player") then return end
+			local snapshot = snapshotPlayerDeath()
+			local attempts = 0
+			local function report()
+				attempts = attempts + 1
+				if not applyDeathRecapSource(_dnl.getUnitState("player")) and attempts < RECAP_POLL_ATTEMPTS then
+					_dnl.after(RECAP_POLL_INTERVAL, report)
+					return
+				end
+				onPlayerDead(arg, snapshot)
+			end
+			report()
+		end
+	end
+end
+
+local death_notification_lib_event_handler = _dnl.createFrame("Frame")
 for event, _ in pairs(dispatch) do
-    death_notification_lib_event_handler:RegisterEvent(event)
+    pcall(death_notification_lib_event_handler.RegisterEvent, death_notification_lib_event_handler, event)
 end
 
 if _dnl.DEBUG then
@@ -673,18 +733,17 @@ if _dnl.DEBUG then
 end
 
 death_notification_lib_event_handler:SetScript("OnEvent", handleEvent)
+_dnl.cleanups[#_dnl.cleanups + 1] = unmuteTimePlayedChatFrames
+if IsLoggedIn() then
+	_pew_fired = true
+	initializeOnFirstReady()
+end
 C_ChatInfo.RegisterAddonMessagePrefix(_dnl.COMM_NAME)
 C_ChatInfo.RegisterAddonMessagePrefix(_dnl.SYNC_COMM_NAME)
 C_ChatInfo.RegisterAddonMessagePrefix(_dnl.VERSION_CHECK_COMM_NAME)
 
-if RaidWarningFrame then
-	local origRWF = RaidWarningFrame:GetScript("OnEvent")
-	if origRWF then
-		RaidWarningFrame:SetScript("OnEvent", function(self, event, ...)
-			if event == "HARDCORE_DEATHS" then return end
-			return origRWF(self, event, ...)
-		end)
-	end
+if RaidWarningFrame and _dnl.canParseBlizzardDeaths() then
+	RaidWarningFrame:UnregisterEvent("HARDCORE_DEATHS")
 end
 
 ---------------------------------------------------------------------------
@@ -762,7 +821,8 @@ end
 
 --- Callbacks registered via HookOnNewerVersion.
 ---@type fun(addonName: string, newerVersion: string, currentVersion: string)[]
-local hook_newer_version_functions = {}
+state.hook_newer_version_functions = state.hook_newer_version_functions or {}
+local hook_newer_version_functions = state.hook_newer_version_functions
 _dnl.hook_newer_version_functions = hook_newer_version_functions
 
 ---Register a hook that fires when a confirmed newer addon version is

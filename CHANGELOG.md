@@ -1,5 +1,17 @@
 # Changelog
 
+## V32 — 2026-11-10
+
+### New Features
+- **World of Warcraft: Forever.** The library loads on Forever (Interface 16001). Forever's own zones and instances (such as The Drowned City and Alcaz Prison) resolve in every locale, and creatures that only exist on Forever (or were renamed there) have names too. The combat log is closed to addons on Forever, so the killer is taken from the death recap instead. The level cap comes from the client (60 on Forever).
+- **One running copy.** When several addons ship the library, the newest installed copy is used: it takes over from an older one that loaded first instead of running next to it, so deaths are no longer broadcast or alerted twice. Attached addons and hooks carry over to the newer copy. Copies from V31 and older cannot be stopped, so a newer copy stays inactive while one of them is running.
+- **Death alerts keep one frame.** Applying the death-alert settings reuses the alert frame instead of building a new one each time.
+
+### Bug Fixes
+- **No Lua error from damage without a source.** Periodic damage whose caster is gone (for example the Cloud of Disease left by Diseased Ghouls in Scholomance) arrives with an empty source GUID and no name. The library then called `GetUnitNameByGUID`, which does not exist, and threw an error on every tick. Such damage is now recorded with an unknown source. ([#1](https://github.com/Deathwing/DeathNotificationLib/issues/1), thanks @leozitor)
+- **Addon messages when ChatThrottleLib loads late.** ChatThrottleLib was looked up once at load time; when the embedding addon loads it afterwards the library fell back to `SendAddonMessage`, which does not exist on Forever. The throttle is now resolved per send, with `C_ChatInfo.SendAddonMessage` as the fallback.
+- **Time-played requests no longer replace Blizzard's chat function.** The library's own `/played` requests are hidden by muting `TIME_PLAYED_MSG` on the chat frames for the duration of the request instead of overriding `ChatFrame_DisplayTimePlayed` / `ChatFrameUtil.DisplayTimePlayed`, which taints on Forever.
+
 ## V31 — 2026-09-11
 
 ### Bug Fixes

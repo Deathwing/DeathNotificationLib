@@ -82,7 +82,7 @@ function _dnl.deathlogJoinChannel()
 		return
 	end
 
-	C_Timer.After(3.0, function()
+	_dnl.after(3.0, function()
 		if GetChannelName(_dnl.death_alerts_channel) == 0 then
 			JoinChannelByName(_dnl.death_alerts_channel, DEATH_ALERTS_CHANNEL_PW, nil, false)
 		end
@@ -91,7 +91,7 @@ function _dnl.deathlogJoinChannel()
 	_dnl.hideChannelFromChatFrames(_dnl.death_alerts_channel)
 
 	local remaining_attempts = 5
-	C_Timer.NewTicker(4, function(self)
+	_dnl.newTicker(4, function(self)
 		if remaining_attempts < 1 then
 			self:Cancel()
 			return
@@ -110,7 +110,7 @@ function _dnl.deathlogJoinChannel()
 	end)
 end
 
-local mute_frame = CreateFrame("Frame")
+local mute_frame = _dnl.createFrame("Frame")
 mute_frame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 mute_frame:SetScript("OnEvent", function(_, _, notice, _, _, _, _, _, _, channelIndex, channelBaseName)
 	if notice ~= "MUTED" then return end
@@ -230,7 +230,7 @@ local function trimStaleEntries(queue)
 	end
 end
 
-C_Timer.NewTicker(1, function()
+_dnl.newTicker(1, function()
 	trimStaleEntries(_dnl.broadcast_death_ping_queue)
 	trimStaleEntries(_dnl.death_alert_out_queue)
 	trimStaleEntries(_dnl.deathlog_request_duel_to_death_queue)
@@ -244,6 +244,6 @@ end)
 --- Periodically reset per-sender throttle counters to prevent the
 --- throttle_player table from growing unbounded over long sessions.
 --- Shadowbanned senders are intentionally NOT cleared.
-C_Timer.NewTicker(THROTTLE_RESET_INTERVAL, function()
+_dnl.newTicker(THROTTLE_RESET_INTERVAL, function()
 	wipe(throttle_player)
 end)

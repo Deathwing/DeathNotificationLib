@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.it.INSTANCE_TO_ID[1] = {
     ["Opening of the Dark Portal"] = 269,
@@ -74,4 +74,33 @@ do
     ["Magister's Terrace"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Searing Basin"] = 2720
+  _dnl.L.it.INSTANCE_TO_ID[0]["Demon Fall Canyon"] = 2784
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Tainted Scar"] = 2789
+  _dnl.L.it.INSTANCE_TO_ID[0]["Storm Cliffs"] = 2791
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Crystal Vale"] = 2804
+  _dnl.L.it.INSTANCE_TO_ID[0]["Shadow Hold"] = 2806
+  _dnl.L.it.INSTANCE_TO_ID[0]["Burning of Andorhal"] = 2807
+  _dnl.L.it.INSTANCE_TO_ID[0]["Starfall Barrow Den"] = 2817
+  _dnl.L.it.INSTANCE_TO_ID[0]["Nightmare Grove"] = 2832
+  _dnl.L.it.INSTANCE_TO_ID[0]["Deadwind Pass"] = 2853
+  _dnl.L.it.INSTANCE_TO_ID[0]["Scarlet Enclave"] = 2856
+  _dnl.L.it.INSTANCE_TO_ID[0]["Karazhan Crypts"] = 2875
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Scarab Dais"] = 2902
+  _dnl.L.it.INSTANCE_TO_ID[0]["Naxxramas"] = 2921
+  _dnl.L.it.INSTANCE_TO_ID[0]["City of Dalaran"] = 2959
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Drowned City"] = 2970
+  _dnl.L.it.INSTANCE_TO_ID[0]["Blackmaw Hold"] = 2974
+  _dnl.L.it.INSTANCE_TO_ID[0]["Alcaz Prison"] = 2994
+  _dnl.L.it.INSTANCE_TO_ID[0]["Darkspear Islands"] = 2997
+  _dnl.L.it.INSTANCE_TO_ID[0]["Excavation Site: Wetlands"] = 2998
+  _dnl.L.it.INSTANCE_TO_ID[0]["Ruins of Lordaeron"] = 2999
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Shaper's Terrace"] = 3001
+  _dnl.L.it.INSTANCE_TO_ID[0]["Battle for Gilneas"] = 3005
+  _dnl.L.it.INSTANCE_TO_ID[0]["Krol'dok Stronghold"] = 3039
+  _dnl.L.it.INSTANCE_TO_ID[0]["The Hall of Thanes"] = 3065
+  _dnl.L.it.INSTANCE_TO_ID[0]["Manor Mistmantle"] = 3109
 end

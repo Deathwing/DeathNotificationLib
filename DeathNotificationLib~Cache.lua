@@ -51,19 +51,25 @@ local GC_INTERVAL = 120
 ---------------------------------------------------------------------------
 
 --- Global hooks (fire for every non-addonless death, regardless of addon).
-local hook_on_entry_functions = {}
-local hook_on_entry_functions_secure = {}
+local state = DeathNotificationLib.State
+state.hook_on_entry_functions = state.hook_on_entry_functions or {}
+state.hook_on_entry_functions_secure = state.hook_on_entry_functions_secure or {}
+local hook_on_entry_functions = state.hook_on_entry_functions
+local hook_on_entry_functions_secure = state.hook_on_entry_functions_secure
 
 --- Per-addon hooks keyed by addon name.
 --- { [addonName] = { fn1, fn2, ... } }
-local per_addon_hooks = {}
-local per_addon_hooks_secure = {}
+state.per_addon_hooks = state.per_addon_hooks or {}
+state.per_addon_hooks_secure = state.per_addon_hooks_secure or {}
+local per_addon_hooks = state.per_addon_hooks
+local per_addon_hooks_secure = state.per_addon_hooks_secure
 
 _dnl.per_addon_hooks = per_addon_hooks
 _dnl.per_addon_hooks_secure = per_addon_hooks_secure
 
 ---@alias QueuePlayerHook fun(name: string, guid: string, race_id: number|nil, class_id: number|nil, guild: string|nil, map_id: number|nil, map_pos: string|nil, instance_id: number|nil): boolean
-local hook_queue_player_functions = {}
+state.hook_queue_player_functions = state.hook_queue_player_functions or {}
+local hook_queue_player_functions = state.hook_queue_player_functions
 
 _dnl.hook_queue_player_functions = hook_queue_player_functions
 
@@ -392,7 +398,7 @@ function _dnl._resetSenderRateLimit()
 	end
 end
 
-C_Timer.NewTicker(GC_INTERVAL, function()
+_dnl.newTicker(GC_INTERVAL, function()
 	local now = GetServerTime()
 	local stale_checksums = {}
 	for checksum, entry in pairs(death_ping_lru_cache_tbl) do
@@ -476,7 +482,7 @@ function _dnl.noteBlizzardDeath(name)
 	blizzard_death_seen[name:lower()] = GetServerTime()
 end
 
-C_Timer.NewTicker(GC_INTERVAL, function()
+_dnl.newTicker(GC_INTERVAL, function()
 	local now = GetServerTime()
 	local stale = {}
 	for name_lower, seen in pairs(blizzard_death_seen) do
@@ -495,6 +501,7 @@ end)
 function _dnl.blizzardCorroborationAvailable()
 	if not _dnl.IS_HARDCORE_REALM then return false end
 	if _dnl.IS_SOUL_OF_IRON_REALM then return false end
+	if not _dnl.canParseBlizzardDeaths() then return false end
 	return _dnl.anyAddonEnables("auto_blizzard_deaths")
 end
 
@@ -547,7 +554,7 @@ local function tryCommitEntry(checksum)
 		local entry = death_ping_lru_cache_tbl[checksum]
 		local waited = GetServerTime() - (entry["timestamp"] or 0)
 		if waited < REPORTED_CONFIRM_DEADLINE then
-			C_Timer.After(REPORTED_CONFIRM_RETRY, function()
+			_dnl.after(REPORTED_CONFIRM_RETRY, function()
 				tryCommitEntry(checksum)
 			end)
 		else
@@ -810,7 +817,7 @@ function _dnl.handleDeathBroadcast(sender, data, sender_guid, chat_line_id)
 				if name_long == name and level == decoded_player_data["level"] then
 					cache_entry["in_guild"] = 1
 					local delay = math.random(0, 10)
-					C_Timer.After(delay, function()
+					_dnl.after(delay, function()
 						if death_ping_lru_cache_tbl[checksum] and death_ping_lru_cache_tbl[checksum]["committed"] then
 							return
 						end
@@ -827,11 +834,11 @@ function _dnl.handleDeathBroadcast(sender, data, sender_guid, chat_line_id)
 	end
 
 	if auto_commit then
-		C_Timer.After(REPORTED_COMMIT_DELAY, function()
+		_dnl.after(REPORTED_COMMIT_DELAY, function()
 			tryCommitEntry(checksum)
 		end)
 	else
-		C_Timer.After(COMMIT_DELAY, function()
+		_dnl.after(COMMIT_DELAY, function()
 			tryCommitEntry(checksum)
 		end)
 	end
@@ -875,7 +882,7 @@ function _dnl.deathlogReceiveChannelMessageChecksum(sender, data)
 
 	death_ping_lru_cache_tbl[checksum]["peer_report"] = death_ping_lru_cache_tbl[checksum]["peer_report"] + 1
 
-	C_Timer.After(CHECKSUM_COMMIT_DELAY, function()
+	_dnl.after(CHECKSUM_COMMIT_DELAY, function()
 		tryCommitEntry(checksum)
 	end)
 end
@@ -986,14 +993,14 @@ function _dnl.onBlizzardChat(msg)
 
 			local elapsed = GetServerTime() - curr_time
 			if elapsed < 5 then
-				C_Timer.After(5 - elapsed, commit)
+				_dnl.after(5 - elapsed, commit)
 			else
 				commit()
 			end
 		end
 	end)
 
-	C_Timer.After(10.0, function()
+	_dnl.after(10.0, function()
 		cancelWho()
 		commit()
 	end)

@@ -189,12 +189,25 @@ local death_alert_frame = nil
 local function createDeathAlertFrame()
 	if death_alert_frame then
 		if death_alert_frame.timer then death_alert_frame.timer:Cancel() end
+		death_alert_frame.timer = nil
 		death_alert_frame:Hide()
-		death_alert_frame:SetParent(nil)
-		death_alert_frame = nil
+		local textures = death_alert_frame.textures
+		if textures then
+			for _, texture in pairs(textures) do
+				if texture.Hide then texture:Hide() end
+			end
+			death_alert_frame.textures = { modelLayer = textures.modelLayer }
+		end
+		death_alert_frame.lf_font_scale = nil
+		death_alert_frame.remove_new_lines = nil
+		death_alert_frame.text:ClearAllPoints()
+		death_alert_frame.text:SetSize(0, 0)
+	else
+		death_alert_frame = _dnl.createFrame("frame")
+		death_alert_frame.text = death_alert_frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	end
 
-	death_alert_frame = CreateFrame("frame")
+	death_alert_frame:ClearAllPoints()
 	death_alert_frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	death_alert_frame:SetWidth(25)
 	death_alert_frame:SetHeight(25)
@@ -203,7 +216,6 @@ local function createDeathAlertFrame()
 	death_alert_frame:SetFrameStrata("FULLSCREEN_DIALOG")
 	death_alert_frame:Show()
 
-	death_alert_frame.text = death_alert_frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	death_alert_frame.text:SetText("")
 	death_alert_frame.text:SetFont(getLocaleString("death_alert_font"), 22, "")
 	death_alert_frame.text:SetTextColor(1, 1, 1, 1)
@@ -215,7 +227,7 @@ end
 -- ── alert dedup cache ────────────────────────────────────────────────
 local alert_cache = {}
 
-C_Timer.NewTicker(30, function()
+_dnl.newTicker(30, function()
 	local now = GetServerTime()
 	for name, info in pairs(alert_cache) do
 		if now - info.ts > _dnl.getDedupWindow(info.level) then
@@ -641,7 +653,7 @@ function _dnl.playDeathAlert(entry)
 				portrait_to_use:Hide()
 				SetPortraitTextureFromCreatureDisplayID(portrait_to_use, id_to_display_id[entry["source_id"]])
 				portrait_to_use:AddMaskTexture(death_alert_frame.textures.enemy_portrait_mask)
-				C_Timer.After(0.04, function()
+				_dnl.after(0.04, function()
 					if portrait_to_use and portrait_to_use.Show then portrait_to_use:Show() end
 				end)
 			elseif environment_damage_icons[entry["source_id"]] then
@@ -678,7 +690,7 @@ function _dnl.playDeathAlert(entry)
 		end
 
 		if death_alert_frame.textures.modelLayer == nil then
-			death_alert_frame.textures.modelLayer = CreateFrame("PlayerModel", nil, death_alert_frame)
+			death_alert_frame.textures.modelLayer = _dnl.createFrame("PlayerModel", nil, death_alert_frame)
 		end
 		portrait.modelLayer = death_alert_frame.textures.modelLayer
 		portrait.modelLayer.useParentLevel = true
@@ -733,7 +745,7 @@ function _dnl.playDeathAlert(entry)
 	death_alert_frame.text:SetFont((fonts[s["font"]] or "Fonts\\NIM_____.ttf"), s["font_size"] * (death_alert_frame.lf_font_scale or 1))
 
 	if death_alert_frame.timer then death_alert_frame.timer:Cancel() end
-	death_alert_frame.timer = C_Timer.NewTimer(s["display_time"], function()
+	death_alert_frame.timer = _dnl.newTimer(s["display_time"], function()
 		death_alert_frame:Hide()
 	end)
 end

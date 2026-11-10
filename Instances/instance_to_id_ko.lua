@@ -1,5 +1,5 @@
 -- Auto-generated instance map data. Do not edit manually.
--- Version: bd8505fb
+-- Version: fe92f475
 
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
@@ -40,7 +40,7 @@ do
   }
 end
 
-if GetExpansionLevel and GetExpansionLevel() >= 1 then
+if _dnl.EXPANSION_LEVEL >= 1 then
 do
   _dnl.L.ko.INSTANCE_TO_ID[1] = {
     ["어둠의 문 열기"] = 269,
@@ -74,4 +74,34 @@ do
     ["마법학자의 정원"] = 585,
   }
 end
+end
+
+if _dnl.IS_FOREVER then
+  _dnl.L.ko.INSTANCE_TO_ID[0]["검은심연 나락"] = 48
+  _dnl.L.ko.INSTANCE_TO_ID[0]["불타는 분지"] = 2720
+  _dnl.L.ko.INSTANCE_TO_ID[0]["악마벼락 협곡"] = 2784
+  _dnl.L.ko.INSTANCE_TO_ID[0]["타락의 흉터"] = 2789
+  _dnl.L.ko.INSTANCE_TO_ID[0]["폭풍 절벽"] = 2791
+  _dnl.L.ko.INSTANCE_TO_ID[0]["수정 골짜기"] = 2804
+  _dnl.L.ko.INSTANCE_TO_ID[0]["어둠의 요새"] = 2806
+  _dnl.L.ko.INSTANCE_TO_ID[0]["불타는 안돌할"] = 2807
+  _dnl.L.ko.INSTANCE_TO_ID[0]["별똥별 지하굴"] = 2817
+  _dnl.L.ko.INSTANCE_TO_ID[0]["악몽의 숲"] = 2832
+  _dnl.L.ko.INSTANCE_TO_ID[0]["죽음의 고개"] = 2853
+  _dnl.L.ko.INSTANCE_TO_ID[0]["붉은십자군 초소"] = 2856
+  _dnl.L.ko.INSTANCE_TO_ID[0]["카라잔 납골당"] = 2875
+  _dnl.L.ko.INSTANCE_TO_ID[0]["스카라베 제단"] = 2902
+  _dnl.L.ko.INSTANCE_TO_ID[0]["낙스라마스"] = 2921
+  _dnl.L.ko.INSTANCE_TO_ID[0]["달라란"] = 2959
+  _dnl.L.ko.INSTANCE_TO_ID[0]["가라앉은 도시"] = 2970
+  _dnl.L.ko.INSTANCE_TO_ID[0]["검은아귀 요새"] = 2974
+  _dnl.L.ko.INSTANCE_TO_ID[0]["알카즈 감옥"] = 2994
+  _dnl.L.ko.INSTANCE_TO_ID[0]["검은창 군도"] = 2997
+  _dnl.L.ko.INSTANCE_TO_ID[0]["발굴 현장: 저습지"] = 2998
+  _dnl.L.ko.INSTANCE_TO_ID[0]["로데론의 폐허"] = 2999
+  _dnl.L.ko.INSTANCE_TO_ID[0]["구체자의 정원"] = 3001
+  _dnl.L.ko.INSTANCE_TO_ID[0]["길니아스 전투지"] = 3005
+  _dnl.L.ko.INSTANCE_TO_ID[0]["크롤도크 보루"] = 3039
+  _dnl.L.ko.INSTANCE_TO_ID[0]["영주의 전당"] = 3065
+  _dnl.L.ko.INSTANCE_TO_ID[0]["미스트맨틀 장원"] = 3109
 end
