@@ -104,6 +104,9 @@ end
 ---@return number|nil source_id Bit-packed source ID
 ---@return string|nil pvp_source_name Player name if PvP kill detected
 function _dnl.encodePvpSource(source_name, source_guid)
+	if _dnl.isSecret(source_name) then source_name = nil end
+	if _dnl.isSecret(source_guid) then source_guid = nil end
+
 	local function create_result(name, race, class, level)
 		local pvp_flag = _dnl.PVP_FLAGS.REGULAR
 		if _dnl.pvp_state.duel_to_death_player ~= nil and _dnl.pvp_state.duel_to_death_player == name then
@@ -133,7 +136,7 @@ function _dnl.encodePvpSource(source_name, source_guid)
 		-- Try to get level from the unit token (may be nil or -1/0 for ?? targets)
 		local level = nil
 		local unit = UnitTokenFromGUID(source_guid)
-		if unit then
+		if unit and not _dnl.isSecret(unit) then
 			local unit_level = UnitLevel(unit)
 			level = (unit_level and unit_level > 0) and unit_level or nil
 		end
@@ -150,6 +153,8 @@ function _dnl.encodePvpSource(source_name, source_guid)
 	if unit then
 		local _, _, enemyRaceId = UnitRace(unit)
 		local _, _, enemyClassId = UnitClass(unit)
+		if _dnl.isSecret(enemyRaceId) then enemyRaceId = nil end
+		if _dnl.isSecret(enemyClassId) then enemyClassId = nil end
 		local unit_level = UnitLevel(unit)
 		local level = (unit_level and unit_level > 0) and unit_level or nil
 

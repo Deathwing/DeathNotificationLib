@@ -47,7 +47,9 @@ local unit_states = {}
 ---@param unit UnitToken
 ---@return boolean
 function _dnl.isUnitInPartyOrRaid(unit)
-	return UnitInParty(unit) or UnitInRaid(unit)
+	if UnitInParty(unit) then return true end
+	local raid_index = UnitInRaid(unit)
+	return not _dnl.isSecret(raid_index) and raid_index ~= nil
 end
 
 ---@param char_data UnitState|nil
@@ -58,10 +60,15 @@ end
 ---@param unit UnitToken
 ---@return UnitState
 function _dnl.getUnitState(unit)
-	if not unit_states[unit] or unit_states[unit].name ~= UnitName(unit) then
+	local name = UnitName(unit)
+	if _dnl.isSecret(name) then
+		name = unit_states[unit] and unit_states[unit].name
+	end
+	if not unit_states[unit] or unit_states[unit].name ~= name then
+		local guid = UnitGUID(unit)
 		unit_states[unit] = {
-			name = UnitName(unit),
-			guid = UnitGUID(unit),
+			name = name,
+			guid = not _dnl.isSecret(guid) and guid or nil,
 			recent_msg = "",
 		}
 	end
@@ -115,8 +122,11 @@ function _dnl.findUnitTokenByName(unit_name)
 	if not unit_name then return nil end
 
 	for _, token in ipairs(TOKEN_OPTIONS) do
-		if UnitExists(token) and UnitName(token) == unit_name then
-			return token
+		if UnitExists(token) then
+			local name = UnitName(token)
+			if not _dnl.isSecret(name) and name == unit_name then
+				return token
+			end
 		end
 	end
 
@@ -147,8 +157,11 @@ function _dnl.findPlayerTokenByName(player_name)
 	if not player_name then return nil end
 
 	for _, token in ipairs(TOKEN_OPTIONS) do
-		if UnitExists(token) and UnitIsPlayer(token) and UnitName(token) == player_name then
-			return token
+		if UnitExists(token) and UnitIsPlayer(token) then
+			local name = UnitName(token)
+			if not _dnl.isSecret(name) and name == player_name then
+				return token
+			end
 		end
 	end
 

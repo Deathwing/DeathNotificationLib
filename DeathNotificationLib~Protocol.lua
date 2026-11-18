@@ -40,6 +40,7 @@ _dnl.SOURCE = {
 	QUERY            = "query",            -- Response to a targeted player query
 	DEBUG            = "debug",            -- Injected via debug / LOCAL_DEBUG_ONLY path
 	UPGRADE          = "upgrade",          -- Late quality upgrade re-fire (no duplicate alert)
+	LOCAL_SELF       = "local_self",       -- Untracked local-player death, delivered only to addons that opted in; never broadcast
 	UNKNOWN          = "unknown",          -- Fallback when source is nil
 }
 
@@ -790,9 +791,9 @@ end
 --- but still honours the global byte budget via CTL's secure hook on
 --- _G.SendChatMessage.
 ---
---- Returns true if the message was sent, false if the bandwidth budget
---- was exhausted, the server has us muted (CHAT_MSG_CHANNEL_NOTICE
---- "MUTED"), or the pcall failed.
+--- Returns true if the message was sent, false if chat is locked down,
+--- the bandwidth budget was exhausted, the server has us muted
+--- (CHAT_MSG_CHANNEL_NOTICE "MUTED"), or the pcall failed.
 ---@param text string         Full chat message text
 ---@param channel_num number  Channel index from GetChannelName()
 ---@param requeue fun()|nil   Re-inserts the message at the head of its queue;
@@ -800,6 +801,9 @@ end
 ---@return boolean sent
 ---@diagnostic disable-next-line: duplicate-set-field
 function _dnl.safeSendChannel(text, channel_num, requeue)
+	if _dnl.inChatLockdown() then
+		return false
+	end
 	local CTL = _G.ChatThrottleLib ---@type ChatThrottleLib?
 	if CTL then
 		local cost = #text + (CTL.MSG_OVERHEAD or 40)

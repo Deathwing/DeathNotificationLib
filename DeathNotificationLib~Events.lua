@@ -11,7 +11,7 @@ references, and callbacks to the multi-addon registry.
 Handled events (partial list):
   CHAT_MSG_CHANNEL            – death pings, checksums, duel requests
   COMBAT_LOG_EVENT_UNFILTERED – last-attack-source tracking per unit
-  PLAYER_DEAD                 – self-death broadcast (tracked characters)
+  PLAYER_DEAD                 – self-death broadcast (tracked characters), local-only delivery (opted-in addons)
   UNIT_HEALTH                 – party/raid death detection (health → 0)
   CHAT_MSG_SAY/GUILD/PARTY    – captures "last words" for death reports
   PLAYER_ENTERING_WORLD       – channel joins
@@ -25,6 +25,7 @@ Handled events (partial list):
 local _dnl = DeathNotificationLib.Internal ---@class _dnl
 if not _dnl then return end
 local SOURCE = _dnl.SOURCE
+local isSecret = _dnl.isSecret
 
 --- Pre-broadcast self-death hooks — called when the local player dies,
 --- before the death is broadcast.  Each hook receives a **shallow copy**
@@ -60,7 +61,7 @@ local function unmuteTimePlayedChatFrames()
 end
 
 _dnl.hookSecureFunc("StaticPopup_Show", function(which, text_arg1, text_arg2, data)
-	if data and type(data) == "string" then
+	if data and type(data) == "string" and not isSecret(data) then
 		if string.find(data, _dnl.DEATH_ALERTS_CHANNEL_BASE) == 1 or string.find(data, _dnl.SYNC_CHANNEL_BASE) == 1 then
 			StaticPopup_Hide(which)
 		end
@@ -92,6 +93,62 @@ function _dnl.shouldBroadcastDeath(unit)
 		end
 	end
 	return false
+end
+
+--- Names of the attached addons whose isUnitRecordedLocally callback says yes, or nil.
+---@param unit UnitToken
+---@return string[]|nil
+function _dnl.localRecorders(unit)
+	local names
+	for name, addon in pairs(_dnl.addons) do
+		if addon.isUnitRecordedLocally and addon.isUnitRecordedLocally(unit) then
+			names = names or {}
+			names[#names + 1] = name
+		end
+	end
+	return names
+end
+
+--- true to broadcast the local player's death, the addons that keep it locally, or nil to ignore it.
+---@return true|string[]|nil
+local function selfDeathRecipients()
+	if _dnl.shouldBroadcastDeath("player") then
+		return true
+	end
+	return _dnl.localRecorders("player")
+end
+
+local SELF_DEATH_REPEAT_WINDOW = 10
+local self_death_at
+
+--- The client can fire PLAYER_DEAD twice for one death: true for a repeat while the player has stayed dead.
+---@return boolean
+local function isRepeatedSelfDeath()
+	local now = GetTime()
+	if self_death_at and now - self_death_at < SELF_DEATH_REPEAT_WINDOW and UnitIsDeadOrGhost("player") then
+		return true
+	end
+	self_death_at = now
+	return false
+end
+
+local function onPlayerAlive()
+	if self_death_at and not UnitIsDeadOrGhost("player") then
+		self_death_at = nil
+	end
+end
+
+--- Deliver an untracked death to the opted-in addons only: no broadcast, LRU, self-death hooks or alert.
+---@param player_data PlayerData
+---@param recorders string[]
+local function recordLocalDeath(player_data, recorders)
+	-- Marks a normal-mode death, so anything that ever leaks it can still be told apart.
+	player_data["extra_data"] = player_data["extra_data"] or {}
+	player_data["extra_data"]["m"] = "n"
+	local checksum = _dnl.fletcher16(player_data)
+	for _, name in ipairs(recorders) do
+		_dnl.createEntry(player_data, checksum, 0, nil, SOURCE.LOCAL_SELF, name)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -144,6 +201,7 @@ end
 
 ---@param arg table
 local function onChatMsgChannel(arg)
+	if isSecret(arg[1]) or isSecret(arg[2]) or isSecret(arg[12]) then return end
 	local _, channel_name = string.split(" ", arg[4])
 
 	if channel_name == _dnl.sync_channel then
@@ -305,17 +363,25 @@ end
 local function applyDeathRecapSource(unit_state)
 	local events = C_DeathRecap.GetRecapEvents()
 	local killing_blow = events and events[1]
-	if not killing_blow or not killing_blow.timestamp or math.abs(GetServerTime() - killing_blow.timestamp) > 60 then
+	if not killing_blow then return false end
+	local timestamp = killing_blow.timestamp
+	if isSecret(timestamp) then
+		unit_state.last_attack_source_name, unit_state.last_attack_source_guid, unit_state.last_attack_source_health = nil, nil, nil
+		return true
+	end
+	if not timestamp or math.abs(GetServerTime() - timestamp) > 60 then
 		return false
 	end
 
-	if killing_blow.event == "ENVIRONMENTAL_DAMAGE" and killing_blow.environmentalType then
-		local environmental_type = killing_blow.environmentalType:lower()
+	local environmental_type = killing_blow.environmentalType
+	if not isSecret(killing_blow.event) and killing_blow.event == "ENVIRONMENTAL_DAMAGE" and environmental_type and not isSecret(environmental_type) then
+		environmental_type = environmental_type:lower()
 		unit_state.last_attack_source_name = environmental_type:sub(1, 1):upper() .. environmental_type:sub(2)
 		unit_state.last_attack_source_guid = nil
 	else
-		unit_state.last_attack_source_name = killing_blow.sourceName
-		unit_state.last_attack_source_guid = killing_blow.sourceGUID
+		local source_name, source_guid = killing_blow.sourceName, killing_blow.sourceGUID
+		unit_state.last_attack_source_name = not isSecret(source_name) and source_name or nil
+		unit_state.last_attack_source_guid = not isSecret(source_guid) and source_guid or nil
 	end
 	unit_state.last_attack_source_health = nil
 	return true
@@ -337,9 +403,12 @@ end
 
 ---@param arg table
 ---@param snapshot table|nil  death-time values captured by the deferred recap path
-local function onPlayerDead(arg, snapshot)
+---@param recipients true|string[]|nil  routing decided with the snapshot; a list keeps the death local
+local function onPlayerDead(arg, snapshot, recipients)
 	if not snapshot then
-		if not _dnl.shouldBroadcastDeath("player") then return end
+		if isRepeatedSelfDeath() then return end
+		recipients = selfDeathRecipients()
+		if not recipients then return end
 		snapshot = snapshotPlayerDeath()
 	end
 
@@ -366,6 +435,11 @@ local function onPlayerDead(arg, snapshot)
 		extra_data
 	)
 
+	if type(recipients) == "table" then
+		recordLocalDeath(player_data, recipients)
+		return
+	end
+
 	for _, f in ipairs(hook_self_death_functions) do
 		local copy = _dnl.deepCopy(player_data)
 		f(copy)
@@ -382,7 +456,13 @@ end
 ---@param arg table
 local function onUnitHealth(arg)
 	local target = arg[1]
-	if target ~= "player" and (UnitHealth(target) == 0 or UnitIsDeadOrGhost(target)) and not UnitIsFeignDeath(target) and _dnl.canUseUnitStates(target) and _dnl.shouldBroadcastDeath(target) then
+	if target == "player" then
+		onPlayerAlive()
+		return
+	end
+	if not _dnl.canUseUnitStates(target) then return end
+	local health = UnitHealth(target)
+	if (UnitIsDeadOrGhost(target) or (not isSecret(health) and health == 0)) and not UnitIsFeignDeath(target) and _dnl.shouldBroadcastDeath(target) then
 		_dnl.reportPartyRaidDeath(target)
 	end
 end
@@ -392,11 +472,12 @@ end
 local function onChatMsg(arg)
 	local text = arg[1]
 	local senderGUID = arg[12]
+	if isSecret(text) or isSecret(senderGUID) then return end
 	local automated_text_found = string.find(text, "Our brave")
 	local questie_text_found = string.find(text, "Questie")
 	if automated_text_found == nil and questie_text_found == nil then
 		local target = UnitTokenFromGUID(senderGUID)
-		if _dnl.canUseUnitStates(target) then
+		if not isSecret(target) and _dnl.canUseUnitStates(target) then
 			_dnl.getUnitState(target).recent_msg = text
 		end
 	end
@@ -421,7 +502,8 @@ local function initializeOnFirstReady()
 		_dnl.joinSyncChannel()
 	end)
 	_dnl.newTicker(60, requestTimePlayed)
-	updateChannels()
+	-- Next frame, so addons attaching in the same PLAYER_ENTERING_WORLD count for the shared settings.
+	_dnl.after(0, updateChannels)
 	_dnl.versionCheckOnSocialJoin()
 end
 
@@ -442,6 +524,7 @@ end
 
 ---@param arg table
 local function onHardcoreDeaths(arg)
+	if isSecret(arg[1]) then return end
 	_dnl.onBlizzardChat(arg[1])
 end
 
@@ -674,6 +757,8 @@ local dispatch = {
 	["CHAT_MSG_CHANNEL"]             = onChatMsgChannel,
 	["COMBAT_LOG_EVENT_UNFILTERED"]  = onCombatLogEventUnfiltered,
 	["PLAYER_DEAD"]                  = onPlayerDead,
+	["PLAYER_ALIVE"]                 = onPlayerAlive,
+	["PLAYER_UNGHOST"]               = onPlayerAlive,
 	["UNIT_HEALTH"]                  = onUnitHealth,
 	["CHAT_MSG_SAY"]                 = onChatMsg,
 	["CHAT_MSG_GUILD"]               = onChatMsg,
@@ -706,7 +791,9 @@ if not CombatLogGetCurrentEventInfo then
 		local RECAP_POLL_INTERVAL, RECAP_POLL_ATTEMPTS = 0.25, 12
 		_dnl.PLAYER_DEAD_SETTLE_DELAY = RECAP_POLL_INTERVAL * RECAP_POLL_ATTEMPTS
 		dispatch["PLAYER_DEAD"] = function(arg)
-			if not _dnl.shouldBroadcastDeath("player") then return end
+			if isRepeatedSelfDeath() then return end
+			local recipients = selfDeathRecipients()
+			if not recipients then return end
 			local snapshot = snapshotPlayerDeath()
 			local attempts = 0
 			local function report()
@@ -715,7 +802,7 @@ if not CombatLogGetCurrentEventInfo then
 					_dnl.after(RECAP_POLL_INTERVAL, report)
 					return
 				end
-				onPlayerDead(arg, snapshot)
+				onPlayerDead(arg, snapshot, recipients)
 			end
 			report()
 		end
@@ -758,19 +845,23 @@ end
 ---@field name string                          Unique addon name (e.g. "Deathlog")
 ---@field tag string                           Exactly 3 characters, unique across addons (e.g. "DLG")
 ---@field isUnitTracked fun(unit: UnitToken): boolean  REQUIRED — should DNL broadcast deaths for this unit?
+---@field isUnitRecordedLocally (fun(unit: UnitToken): boolean)|nil  Opt-in, asked for "player" only when no addon tracks the death: true delivers it to this addon alone as SOURCE.LOCAL_SELF (extra_data.m = "n"), never broadcast
 ---@field settings DNL_Settings|nil            Per-addon settings (all keys have defaults)
 ---@field db DNL_Database|nil                  READ-ONLY by DNL: { [checksum] = PlayerData } for sync/query
 ---@field db_map DNL_DatabaseMap|nil           READ-ONLY by DNL: { [name] = checksum } for sync/query
 ---@field dev_data DNL_DevData|nil             Optional debug data
 ---@field addon_version string|nil             Semantic version string (e.g. "0.4.0") for upgrade notifications
 ---@field watchlistIconProvider fun(playerName: string): string|nil Optional callback returning a watchlist icon string for a player name
+---@field syncWindowDays (fun(days: number): number)|nil  Optional: given the configured sync window (-1 = all), return a narrower one (1-30 days) this addon should sync; wider results are ignored
 ---@param options DNL_AttachAddonOptions
 function _dnl.attachAddon(options)
 	assert(type(options) == "table", "[DNL] AttachAddon: options must be a table")
 	assert(type(options.name) == "string" and options.name ~= "", "[DNL] AttachAddon: name is required")
 	assert(type(options.tag) == "string" and #options.tag == 3, "[DNL] AttachAddon: tag must be exactly 3 characters")
 	assert(type(options.isUnitTracked) == "function", "[DNL] AttachAddon: isUnitTracked function is required")
+	assert(options.isUnitRecordedLocally == nil or type(options.isUnitRecordedLocally) == "function", "[DNL] AttachAddon: isUnitRecordedLocally must be a function when provided")
 	assert(options.watchlistIconProvider == nil or type(options.watchlistIconProvider) == "function", "[DNL] AttachAddon: watchlistIconProvider must be a function when provided")
+	assert(options.syncWindowDays == nil or type(options.syncWindowDays) == "function", "[DNL] AttachAddon: syncWindowDays must be a function when provided")
 	assert(not _dnl.addons[options.name], "[DNL] AttachAddon: addon '" .. options.name .. "' already registered")
 	assert(not _dnl.tag_to_addon[options.tag], "[DNL] AttachAddon: tag '" .. options.tag .. "' already in use by '" .. (_dnl.tag_to_addon[options.tag] or "") .. "'")
 
@@ -784,12 +875,14 @@ function _dnl.attachAddon(options)
 		name              = options.name,
 		tag               = options.tag,
 		isUnitTracked     = options.isUnitTracked,
+		isUnitRecordedLocally = options.isUnitRecordedLocally,
 		settings          = options.settings,
 		db                = options.db,
 		db_map            = options.db_map,
 		dev_data          = options.dev_data,
 		addon_version     = options.addon_version,
 		watchlistIconProvider = options.watchlistIconProvider,
+		syncWindowDays    = options.syncWindowDays,
 	}
 
 	_dnl.addons[options.name] = addon

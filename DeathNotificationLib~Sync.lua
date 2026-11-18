@@ -46,8 +46,7 @@ local SYNC_CMD_WATERMARK    = "W"
 local SYNC_CMD_BUCKET_REQ   = "M"
 local SYNC_CMD_ENTRY_RES    = "E"
 
---- Cooldown between full sync sessions (seconds)
-local DEFAULT_SYNC_COOLDOWN = 300
+local DEFAULT_SYNC_COOLDOWN = _dnl.SETTING_DEFAULTS.sync_cooldown
 
 --- How long to collect watermarks before picking a peer (seconds)
 local WATERMARK_COLLECT_WINDOW = 10
@@ -68,11 +67,9 @@ local RESPONDING_TIMEOUT    = 120
 --- Minimum entry-count gap before triggering a sync
 local SYNC_THRESHOLD        = 5
 
---- Default settings
-local DEFAULT_SYNC_ENABLED      = true
-local DEFAULT_SYNC_WINDOW_DAYS  = 7
-local DEFAULT_SYNC_INTERVAL     = 300
-local DEFAULT_SYNC_MAX_ENTRIES  = 500
+local DEFAULT_SYNC_WINDOW_DAYS  = _dnl.SETTING_DEFAULTS.sync_window_days
+local DEFAULT_SYNC_INTERVAL     = _dnl.SETTING_DEFAULTS.sync_interval
+local DEFAULT_SYNC_MAX_ENTRIES  = _dnl.SETTING_DEFAULTS.sync_max_entries
 
 ---@param settings DNL_Settings|nil  Per-addon settings (nil → default)
 ---@return number seconds
@@ -115,6 +112,7 @@ local pending_request = nil
 --- Statistics for current / last sync session
 local stats = {
 	entries_received   = 0,
+	entries_accepted   = 0,
 	entries_sent       = 0,
 	last_sync_time     = 0,
 	last_sync_entries  = 0,
@@ -124,6 +122,10 @@ local stats = {
 --- Each addon tracks its own cooldown independently so that syncing
 --- one addon does not block the others.
 local sync_cooldown_per_addon = {}
+
+--- Consecutive sessions per tag that added no entry to the addon's db; each one doubles the cooldown.
+local empty_sessions_per_addon = {}
+local EMPTY_SESSION_BACKOFF_MAX = 3600
 
 --- Timer handles (so we can cancel them)
 local watermark_ticker   = nil
@@ -153,18 +155,14 @@ local absolute_timer     = nil
 ---@param settings DNL_Settings|nil  Per-addon settings (nil → default)
 ---@return boolean
 local function isSyncEnabled(settings)
-	if settings and settings.sync_enabled == false then
-		return false
-	end
-	return DEFAULT_SYNC_ENABLED
+	return _dnl.getSetting(settings, "sync_enabled") ~= false
 end
 
----Check whether ANY registered addon has sync enabled.
----Used for global gates (join channel, accept E$ entries).
+---Accept gate for passive E$ entries: some addon with a db syncs.
 ---@return boolean
 local function anySyncEnabled()
 	for _, addon in pairs(_dnl.addons) do
-		if isSyncEnabled(addon.settings) then return true end
+		if addon.db and isSyncEnabled(addon.settings) then return true end
 	end
 	return false
 end
@@ -178,6 +176,21 @@ local function getSyncWindowDays(settings)
 		if d and (d == -1 or (d >= 1 and d <= 30)) then return d end
 	end
 	return DEFAULT_SYNC_WINDOW_DAYS
+end
+
+--- The configured window, narrowed by the addon's optional syncWindowDays callback (never widened).
+---@param addon DNL_RegisteredAddon
+---@return number days
+local function getAddonSyncWindowDays(addon)
+	local days = getSyncWindowDays(addon.settings)
+	if not addon.syncWindowDays then return days end
+	local narrowed = tonumber(addon.syncWindowDays(days))
+	if not narrowed then return days end
+	narrowed = math.floor(narrowed)
+	if narrowed >= 1 and narrowed <= 30 and (days == -1 or narrowed <= days) then
+		return narrowed
+	end
+	return days
 end
 
 ---@param settings DNL_Settings|nil  Per-addon settings (nil → default)
@@ -400,7 +413,7 @@ local function broadcastWatermark()
 	if ch == 0 then return end
 	for _, addon in pairs(_dnl.addons) do
 		if addon.db and isSyncEnabled(addon.settings) then
-			local window = getSyncWindowDays(addon.settings)
+			local window = getAddonSyncWindowDays(addon)
 			local ts, count = computeLocalWatermark(addon.db, window)
 			local msg = SYNC_CMD_WATERMARK
 				.. _dnl.COMM_COMMAND_DELIM
@@ -558,7 +571,7 @@ function _dnl.handleSyncWatermark(sender, payload)
 	-- meaning another sync session is already streaming entries.
 	if GetServerTime() - last_entry_seen_time < CHANNEL_BUSY_COOLDOWN then return end
 
-	local local_window = getSyncWindowDays(local_addon.settings)
+	local local_window = getAddonSyncWindowDays(local_addon)
 	local cmp_window = math.min(
 		local_window == -1 and 9999 or local_window,
 		window == -1 and 9999 or window)
@@ -609,7 +622,7 @@ function _dnl._syncPickPeerAndJitter()
 		local addon = addonForTag(info.tag)
 		if addon and addon.db and isSyncEnabled(addon.settings) then
 			if now >= (sync_cooldown_per_addon[info.tag] or 0) then
-				local local_window = getSyncWindowDays(addon.settings)
+				local local_window = getAddonSyncWindowDays(addon)
 				local cmp_window = math.min(
 					local_window == -1 and 9999 or local_window,
 					info.window == -1 and 9999 or info.window)
@@ -670,7 +683,7 @@ function _dnl._syncSendBucketRequest()
 		return
 	end
 
-	local window = getSyncWindowDays(local_addon.settings)
+	local window = getAddonSyncWindowDays(local_addon)
 	local day_idx = buildDayIndex(local_addon.db, window)
 
 	-- Flatten to sorted array of { day_index, count, hash } for deterministic order
@@ -682,6 +695,7 @@ function _dnl._syncSendBucketRequest()
 
 	state = SYNC_STATE.AWAITING_ENTRIES
 	stats.entries_received = 0
+	stats.entries_accepted = 0
 
 	if debug then
 		print(string.format("[DNL Sync] Sending bucket request to %s (%d days, %d buckets)",
@@ -759,6 +773,7 @@ end
 ---@param sender string
 ---@param payload string
 function _dnl.handleSyncBucketRequest(sender, payload)
+	if _dnl.inChatLockdown() then return end
 	local values = {}
 	for w in payload:gmatch("(.-)~") do
 		values[#values + 1] = w
@@ -1002,6 +1017,7 @@ function _dnl._processSyncEntry(single_payload, tag)
 	if not tag then return end
 	local target_addon = addonForTag(tag)
 	if not target_addon or not target_addon.db then return end
+	if not isSyncEnabled(target_addon.settings) then return end
 
 	local decoded, protocol_version = _dnl.decodeMessage(single_payload)
 	if not decoded then return end
@@ -1052,6 +1068,9 @@ function _dnl._processSyncEntry(single_payload, tag)
 	_dnl.createEntry(decoded, checksum, 0, nil, _dnl.SOURCE.SYNC, target_addon.name)
 
 	stats.entries_received = stats.entries_received + 1
+	if tag == sync_tag and target_addon.db[checksum] then
+		stats.entries_accepted = stats.entries_accepted + 1
+	end
 end
 
 --- Backlog of raw E$ payloads waiting to be processed.
@@ -1138,6 +1157,7 @@ end
 ---@param reason string  "complete" | "timeout"
 function _dnl._syncFinish(reason)
 	local received = stats.entries_received
+	local accepted = stats.entries_accepted
 
 	-- Capture the syncing addon's tag and cooldown BEFORE resetToIdle clears sync_tag
 	local finished_tag = sync_tag
@@ -1147,6 +1167,7 @@ function _dnl._syncFinish(reason)
 	stats.last_sync_time    = GetServerTime()
 	stats.last_sync_entries = received
 	stats.entries_received  = 0
+	stats.entries_accepted  = 0
 
 	if debug and received > 0 then
 		print(string.format("[DNL Sync] Sync %s: received %d entries", reason, received))
@@ -1154,6 +1175,16 @@ function _dnl._syncFinish(reason)
 
 	resetToIdle()
 	if finished_tag then
+		if accepted > 0 then
+			empty_sessions_per_addon[finished_tag] = nil
+		else
+			local empty = (empty_sessions_per_addon[finished_tag] or 0) + 1
+			empty_sessions_per_addon[finished_tag] = empty
+			cooldown = math.min(EMPTY_SESSION_BACKOFF_MAX, math.max(cooldown, DEFAULT_SYNC_COOLDOWN) * 2 ^ empty)
+			if debug then
+				print(string.format("[DNL Sync] Session for %s added nothing (%d in a row), backoff %ds", finished_tag, empty, cooldown))
+			end
+		end
 		sync_cooldown_per_addon[finished_tag] = GetServerTime() + cooldown
 	end
 end
@@ -1280,7 +1311,7 @@ function _dnl.syncStatus()
 
 	for name, addon in pairs(_dnl.addons) do
 		local enabled = isSyncEnabled(addon.settings)
-		local wd = getSyncWindowDays(addon.settings)
+		local wd = getAddonSyncWindowDays(addon)
 		local count = 0
 		if addon.db then
 			_, count = computeLocalWatermark(addon.db, wd)
@@ -1379,6 +1410,10 @@ if debug then
 	_dnl._checksumNumeric       = checksumNumeric
 	_dnl._dayIndex              = dayIndex
 	_dnl._syncCooldownPerAddon  = sync_cooldown_per_addon
+	_dnl._syncEmptySessions     = empty_sessions_per_addon
+	_dnl._syncSetTag            = function(t) sync_tag = t end
+	_dnl._getAddonSyncWindowDays = getAddonSyncWindowDays
+	_dnl._anySyncEnabled        = anySyncEnabled
 
 	_dnl._drainSyncBacklogAll   = function()
 		while #sync_entry_backlog > 0 do

@@ -61,14 +61,20 @@ end
 -- Helpers
 ---------------------------------------------------------------------------
 
---- Check if a player name already exists in any registered addon's
+---@param addon DNL_RegisteredAddon
+---@return boolean
+local function receivesImports(addon)
+	return addon.db_map ~= nil and _dnl.getSetting(addon.settings, "sync_enabled") ~= false
+end
+
+--- Check if a player name already exists in every importing addon's
 --- persistent db_map.  Unlike isNameAlreadyCommitted (which is an
 --- in-memory LRU with a 60-second window), this survives reloads.
 ---@param name string
 ---@return boolean
 local function isNameInAllAddonDbs(name)
 	for _, addon in pairs(_dnl.addons) do
-		if addon.db_map and not addon.db_map[name] then
+		if receivesImports(addon) and not addon.db_map[name] then
 			return false
 		end
 	end
@@ -86,7 +92,7 @@ local function deliverToMissingAddons(pd)
 
 	local delivered = false
 	for addon_name, addon in pairs(_dnl.addons) do
-		if addon.db_map and not addon.db_map[name] then
+		if receivesImports(addon) and not addon.db_map[name] then
 			_dnl.createEntry(pd, nil, 0, nil, _dnl.SOURCE.HARDCORE_TBC_SYNC, addon_name)
 			delivered = true
 		end

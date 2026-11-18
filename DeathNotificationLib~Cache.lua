@@ -135,7 +135,7 @@ function _dnl.createEntry(_player_data, checksum, peer_count, in_guild, source, 
 	-- Per-addon copy preparation:
 	-- Strip playtime if the addon explicitly opted out (share_playtime = false).
 	local function prepareAddonCopy(addon_copy, addon)
-		if addon.settings and addon.settings.share_playtime == false then
+		if not _dnl.getSetting(addon.settings, "share_playtime") then
 			addon_copy["played"] = nil
 		end
 	end
@@ -174,7 +174,7 @@ function _dnl.createEntry(_player_data, checksum, peer_count, in_guild, source, 
 	if is_addonless then
 		-- Per-addon hooks ONLY — filtered by addonless_logging setting
 		for addon_name, addon in pairs(_dnl.addons) do
-			if addon.settings and addon.settings.addonless_logging then
+			if _dnl.getSetting(addon.settings, "addonless_logging") then
 				local addon_copy = _dnl.deepCopy(_player_data)
 				prepareAddonCopy(addon_copy, addon)
 				if addon_name == alert_owner_name then alert_copy = addon_copy end
@@ -205,22 +205,13 @@ function _dnl.createEntry(_player_data, checksum, peer_count, in_guild, source, 
 	end
 
 	if alert_copy and (source == SOURCE.SELF_DEATH or source == SOURCE.PEER_BROADCAST or source == SOURCE.BLIZZARD) then
-		-- Attach who transmitted this death so the alert can show a <reported_by>
-		-- tag. Only a peer relay is meaningful; a self-report's sender is the
-		-- victim, and Blizzard-sourced deaths have no transmitter. The alert copy
-		-- is the same table a consumer hook may have stored, so shallow-copy
-		-- before adding the field rather than mutating stored data.
+		local reported_by = nil
 		if source == SOURCE.PEER_BROADCAST then
 			local origin_sender = DeathNotificationLib.GetEntryOrigin(checksum)
-			-- A self-report's sender is the victim, so it names no third party.
-			if origin_sender and origin_sender ~= alert_copy["name"] then
-				local alert_with_origin = {}
-				for k, v in pairs(alert_copy) do alert_with_origin[k] = v end
-				alert_with_origin.reported_by = origin_sender
-				alert_copy = alert_with_origin
-			end
+			if origin_sender and origin_sender ~= alert_copy["name"] then reported_by = origin_sender end
 		end
-		_dnl.playDeathAlert(alert_copy)
+		-- Passed separately: the owner's alertFilter must see the table its hook received.
+		_dnl.playDeathAlert(alert_copy, reported_by)
 	end
 end
 
@@ -678,7 +669,7 @@ function _dnl.handleDeathBroadcast(sender, data, sender_guid, chat_line_id)
 
 	if not is_self_report and not _dnl.anyAddonEnables("peer_reporting") then
 		if _dnl.DEBUG then
-			print("Peer-reported death ignored (all addons disabled peer_reporting):", decoded_player_data["name"], "reported by:", sender)
+			print("Peer-reported death ignored (peer_reporting off in every attached addon):", decoded_player_data["name"], "reported by:", sender)
 		end
 		return
 	end

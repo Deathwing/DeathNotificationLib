@@ -113,7 +113,7 @@ end
 local mute_frame = _dnl.createFrame("Frame")
 mute_frame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 mute_frame:SetScript("OnEvent", function(_, _, notice, _, _, _, _, _, _, channelIndex, channelBaseName)
-	if notice ~= "MUTED" then return end
+	if _dnl.isSecret(notice) or notice ~= "MUTED" then return end
 	for _, name in ipairs({ _dnl.death_alerts_channel, _dnl.sync_channel }) do
 		if name and (channelBaseName == name or channelIndex == GetChannelName(name)) then
 			_dnl.onSendMutedNotice()

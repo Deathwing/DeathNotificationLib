@@ -12,7 +12,7 @@ Soft dependencies (graceful fallback when absent):
   - AceConfig-3.0 + AceConfigDialog-3.0 → auto-registers options panel
 
 Key entry points:
-  _dnl.playDeathAlert(entry)     – show alert for a PlayerData table
+  _dnl.playDeathAlert(entry, reported_by) – show alert for a PlayerData table
   _dnl.testDeathAlert()          – fake entry → playDeathAlert
   _dnl.applyDeathAlertSettings() – (re)build the frame from current settings
 --]]
@@ -141,7 +141,6 @@ local defaults = {
 	["size_y"]              = 200,
 	["style"]               = "boss_banner_enemy_icon_medium",
 	["display_time"]        = 6,
-	["alert_subset"]        = "faction_wide",
 	["font"]                = "Nimrod MT",
 	["font_size"]           = 16,
 	["font_color_r"]        = 1,
@@ -464,7 +463,8 @@ local environment_damage_icons = {
 -- ── playDeathAlert ───────────────────────────────────────────────────
 ---Show a death alert popup for the given PlayerData entry.
 ---@param entry PlayerData
-function _dnl.playDeathAlert(entry)
+---@param reported_by string|nil Peer who relayed the death, for the <reported_by> tag
+function _dnl.playDeathAlert(entry, reported_by)
 	local s = S()
 	if not s or s["enable"] == false then return end
 
@@ -593,7 +593,7 @@ function _dnl.playDeathAlert(entry)
 		["zone"]        = zone or "",
 		["playtime"]    = _dnl.formatPlaytime(entry["played"]) or "",
 		["last_words"]  = entry["last_words"] or "",
-		["reported_by"] = entry["reported_by"] or "",
+		["reported_by"] = reported_by or entry["reported_by"] or "",
 	}
 
 	local function applySubs(str)

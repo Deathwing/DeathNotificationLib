@@ -108,6 +108,7 @@ end
 ---Sends one message per registered addon that has an addon_version.
 ---@param chatType string  "PARTY", "RAID", "GUILD", or "INSTANCE_CHAT"
 local function announceVersion(chatType)
+	if _dnl.inChatLockdown() then return end
 	local now = GetServerTime()
 	if last_announce_time[chatType] and (now - last_announce_time[chatType]) < ANNOUNCE_COOLDOWN then
 		return

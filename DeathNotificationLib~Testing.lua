@@ -2245,12 +2245,12 @@ function _dnl.testIntegration()
 				-- Phase 24: Peer reporting disabled setting
 				-- ============================================================
 				print(TAG .. "Phase 24: Peer reporting disabled")
-				-- Temporarily override the first addon's settings so getSetting returns our mock
+				-- Every attached addon with settings resolves peer_reporting=false
 				local saved_addon_settings = {}
 				for addonName, addon in pairs(_dnl.addons) do
 					if addon.settings then
 						saved_addon_settings[addonName] = addon.settings
-						addon.settings = { peer_reporting = false, death_alert_priority = (addon.settings.death_alert_priority or 0) }
+						addon.settings = { peer_reporting = false, sync_enabled = addon.settings.sync_enabled, death_alert_priority = (addon.settings.death_alert_priority or 0) }
 					end
 				end
 
@@ -2264,6 +2264,21 @@ function _dnl.testIntegration()
 					record("peer_reporting=false rejects non-self broadcast",
 						_dnl.lru_by_name[pr_name:lower()] == nil,
 						"entry should not exist in LRU")
+				end
+
+				for addonName in pairs(saved_addon_settings) do
+					_dnl.addons[addonName].settings = { sync_enabled = false }
+				end
+				do
+					local name = testName("Peerdef")
+					_dnl.lru_by_name[name:lower()] = nil
+					local enc = _dnl.encodeMessage(_dnl.playerData(name, "", 100, 1, 1, 30, nil, 1429, nil, GetServerTime(), nil, nil))
+					if enc then
+						_dnl.handleDeathBroadcast("SomeOtherPlayer", enc)
+						record("peer_reporting=nil accepts non-self broadcast (default on)",
+							_dnl.lru_by_name[name:lower()] ~= nil,
+							"entry should exist in LRU")
+					end
 				end
 
 				-- Restore addon settings
@@ -3073,6 +3088,53 @@ function _dnl.testSync()
 	end
 	record("E$ during JITTER_WAIT → drops to IDLE",
 		_dnl._syncState() == _dnl.SYNC_STATE.IDLE)
+
+	-- ----------------------------------------------------------------
+	-- Phase 7: Addon-narrowed window, empty-session backoff
+	-- ----------------------------------------------------------------
+	print(TAG .. "Phase 7: Narrowed window + empty-session backoff")
+
+	local test_addon = _dnl.addons["__test_sync__"]
+	test_addon.syncWindowDays = function() return 3 end
+	record("syncWindowDays narrows the window",
+		_dnl._getAddonSyncWindowDays(test_addon) == 3)
+	test_addon.syncWindowDays = function() return 20 end
+	record("syncWindowDays cannot widen the window",
+		_dnl._getAddonSyncWindowDays(test_addon) == 7)
+	test_addon.settings.sync_window_days = -1
+	record("syncWindowDays narrows an all-data window",
+		_dnl._getAddonSyncWindowDays(test_addon) == 20)
+	test_addon.syncWindowDays = function() return 0 end
+	record("syncWindowDays below one day is ignored",
+		_dnl._getAddonSyncWindowDays(test_addon) == -1)
+	test_addon.settings.sync_window_days = nil
+	test_addon.syncWindowDays = nil
+
+	local function finishSession(accepted)
+		_dnl._syncResetToIdle()
+		_dnl._syncSetTag("TST")
+		_dnl._syncSetState(_dnl.SYNC_STATE.AWAITING_ENTRIES)
+		_dnl._syncStats.entries_accepted = accepted
+		_dnl._syncFinish("test")
+		return _dnl._syncCooldownPerAddon["TST"] - GetServerTime()
+	end
+	wipe(_dnl._syncCooldownPerAddon)
+	wipe(_dnl._syncEmptySessions)
+	local cd_empty1 = finishSession(0)
+	local cd_empty2 = finishSession(0)
+	for _ = 1, 6 do finishSession(0) end
+	local cd_capped = finishSession(0)
+	local cd_full = finishSession(3)
+	local function near(a, b) return math.abs(a - b) <= 1 end
+	record("empty session doubles the cooldown",
+		near(cd_empty1, 600) and near(cd_empty2, 1200),
+		"cd=" .. tostring(cd_empty1) .. "," .. tostring(cd_empty2))
+	record("empty-session backoff is capped at one hour",
+		near(cd_capped, 3600), "cd=" .. tostring(cd_capped))
+	record("session that added entries resets the backoff",
+		near(cd_full, 300) and _dnl._syncEmptySessions["TST"] == nil, "cd=" .. tostring(cd_full))
+	wipe(_dnl._syncCooldownPerAddon)
+	wipe(_dnl._syncEmptySessions)
 
 	-- ----------------------------------------------------------------
 	-- Summary
@@ -4075,6 +4137,9 @@ function _dnl.testAttachAddon()
 	record("rejects db_map without db",
 		not pcall(_dnl.attachAddon, { name = "Test", tag = "AAA", isUnitTracked = dummy_fn, db_map = {} }))
 
+	record("rejects non-function isUnitRecordedLocally",
+		not pcall(_dnl.attachAddon, { name = "Test", tag = "AAA", isUnitTracked = dummy_fn, isUnitRecordedLocally = true }))
+
 	-- 1k: successful minimal registration
 	local ok_min = pcall(_dnl.attachAddon, { name = "MinTest", tag = "MN1", isUnitTracked = dummy_fn })
 	record("accepts minimal registration", ok_min)
@@ -4186,19 +4251,76 @@ function _dnl.testAttachAddon()
 	record("shouldBroadcastDeath: both false → false",
 		_dnl.shouldBroadcastDeath("player") == false)
 
+	record("localRecorders: nil without opt-in",
+		_dnl.localRecorders("player") == nil)
+	_dnl.addons["__TestAlpha__"].isUnitRecordedLocally = function() return true end
+	local recorders = _dnl.localRecorders("player")
+	record("localRecorders: only the opted-in addon",
+		recorders ~= nil and #recorders == 1 and recorders[1] == "__TestAlpha__")
+	_dnl.addons["__TestAlpha__"].isUnitRecordedLocally = nil
+
 	-- Restore
 	alpha_tracks = true; beta_tracks = true
 
-	-- 2b: anyAddonEnables (opt-in semantics, default=false)
-	record("anyAddonEnables: both false → false",
-		_dnl.anyAddonEnables("addonless_logging") == false)
+	-- 2b: getSetting / anyAddonEnables
+	local alpha_s = _dnl.addons["__TestAlpha__"].settings
+	local beta_s  = _dnl.addons["__TestBeta__"].settings
+	local all_defaults = true
+	for key, default in pairs(_dnl.SETTING_DEFAULTS) do
+		if _dnl.getSetting(nil, key) ~= default or _dnl.getSetting({}, key) ~= default then
+			all_defaults = false
+			record("getSetting: nil means default for " .. key, false)
+		end
+	end
+	record("getSetting: nil key or table means the default for every key", all_defaults)
+	record("getSetting: explicit false is kept",
+		_dnl.getSetting({ peer_reporting = false }, "peer_reporting") == false)
+	record("getSetting: explicit number is kept",
+		_dnl.getSetting({ sync_window_days = 30 }, "sync_window_days") == 30)
+	record("legacy_messages defaults to off",
+		_dnl.SETTING_DEFAULTS.legacy_messages == false)
 
-	_dnl.addons["__TestAlpha__"].settings.addonless_logging = true
+	local shared_keys = { "peer_reporting", "legacy_messages", "auto_blizzard_deaths", "auto_hide_chat_channels", "addonless_logging" }
+	local saved_shared = {}
+	for _, key in ipairs(shared_keys) do
+		saved_shared[key] = { alpha_s[key], beta_s[key] }
+		alpha_s[key] = nil
+		beta_s[key] = nil
+	end
+	record("anyAddonEnables: nil → default on (peer_reporting, auto_blizzard_deaths, auto_hide_chat_channels)",
+		_dnl.anyAddonEnables("peer_reporting") and _dnl.anyAddonEnables("auto_blizzard_deaths")
+			and _dnl.anyAddonEnables("auto_hide_chat_channels"))
+	record("anyAddonEnables: nil → default off (legacy_messages, addonless_logging)",
+		not _dnl.anyAddonEnables("legacy_messages") and not _dnl.anyAddonEnables("addonless_logging"))
+
+	alpha_s.peer_reporting = false
+	record("anyAddonEnables: one false, one nil → true",
+		_dnl.anyAddonEnables("peer_reporting") == true)
+	beta_s.peer_reporting = false
+	record("anyAddonEnables: both false → false",
+		_dnl.anyAddonEnables("peer_reporting") == false)
+
+	alpha_s.auto_blizzard_deaths = false
+	beta_s.auto_blizzard_deaths = false
+	_dnl.addons["__TestGamma__"] = { name = "__TestGamma__", tag = "GA1", isUnitTracked = dummy_fn }
+	record("anyAddonEnables: an addon without settings does not switch shared keys on",
+		_dnl.anyAddonEnables("peer_reporting") == false and _dnl.anyAddonEnables("auto_blizzard_deaths") == false)
+	local saved_registry = _dnl.addons
+	_dnl.addons = { ["__TestGamma__"] = saved_registry["__TestGamma__"] }
+	record("anyAddonEnables: no addon with settings → defaults",
+		_dnl.anyAddonEnables("peer_reporting") == true and _dnl.anyAddonEnables("legacy_messages") == false)
+	_dnl.addons = saved_registry
+	_dnl.addons["__TestGamma__"] = nil
+
+	beta_s.addonless_logging = true
 	record("anyAddonEnables: one true → true",
 		_dnl.anyAddonEnables("addonless_logging") == true)
 
-	_dnl.addons["__TestAlpha__"].settings.addonless_logging = false
-	record("anyAddonEnables: back to both false → false",
+	for _, key in ipairs(shared_keys) do
+		alpha_s[key] = saved_shared[key][1]
+		beta_s[key] = saved_shared[key][2]
+	end
+	record("anyAddonEnables: both false → false (addonless_logging)",
 		_dnl.anyAddonEnables("addonless_logging") == false)
 
 	-- 2e: getDeathAlertOwnerSettings (highest priority wins)
@@ -4356,6 +4478,25 @@ function _dnl.testAttachAddon()
 		beta_hook_played == nil,
 		string.format("got %s", tostring(beta_hook_played)))
 
+	-- 3f: per-addon keys left nil use their defaults
+	local saved_beta_share = beta_s.share_playtime
+	beta_s.share_playtime = nil
+	beta_s.addonless_logging = nil
+	alpha_hook_count = 0; beta_hook_count = 0; beta_hook_played = nil
+	_dnl.createEntry(_dnl.playerData("PlaytimeNil" .. math.random(10000, 99999), "G", 100, 1, 1, 30, nil, 1429, nil, GetServerTime(), 36000, nil),
+		"playtime-nil-cs", 1, nil, _dnl.SOURCE.DEBUG)
+	record("share_playtime=nil keeps played (default on)",
+		beta_hook_played == 36000,
+		string.format("got %s", tostring(beta_hook_played)))
+	beta_hook_count = 0
+	_dnl.createEntry({ name = "AddonlessNil" .. math.random(10000, 99999), guild = "", source_id = -1, level = 0, map_id = 1429 },
+		"addonless-nil-cs", 1, nil, _dnl.SOURCE.BLIZZARD)
+	record("addonless_logging=nil does not deliver addonless deaths (default off)",
+		beta_hook_count == 0,
+		string.format("count=%d", beta_hook_count))
+	beta_s.share_playtime = saved_beta_share
+	beta_s.addonless_logging = false
+
 	-- ================================================================
 	-- Phase 4: Per-Addon DB Isolation via Sync Entry Routing
 	-- ================================================================
@@ -4428,6 +4569,47 @@ function _dnl.testAttachAddon()
 	record("sync routing unknown tag: neither hook fires",
 		alpha_hook_count == 0 and beta_hook_count == 0,
 		string.format("alpha=%d, beta=%d", alpha_hook_count, beta_hook_count))
+
+	-- sync_enabled=false: nothing is written into that addon's db
+	local seed_name = testName("Syncseed")
+	local seed_row = _dnl.playerData(seed_name, "Oldguild", 300, 1, 1, 40, nil, 1429, nil, GetServerTime(), nil, nil)
+	local seed_cs = _dnl.fletcher16(seed_row)
+	alpha_db[seed_cs] = seed_row
+	alpha_db_map[seed_name] = seed_cs
+	local near_enc = _dnl.encodeMessage(_dnl.playerData(seed_name, "Newguild", 300, 1, 1, 40, nil, 1429, nil, GetServerTime(), 3600, nil))
+	alpha_s.sync_enabled = false
+	alpha_hook_count = 0
+	if near_enc then
+		_dnl.handleSyncEntry("FakeSyncPeer", "AL1" .. _dnl.COMM_FIELD_DELIM .. near_enc)
+	end
+	_dnl._drainSyncBacklogAll()
+	record("sync_enabled=false: near-duplicate row is left untouched",
+		alpha_db[seed_cs] == seed_row and seed_row.guild == "Oldguild" and seed_row.played == nil)
+	record("sync_enabled=false: hook does not fire",
+		alpha_hook_count == 0,
+		string.format("count=%d", alpha_hook_count))
+	alpha_s.sync_enabled = true
+	if near_enc then
+		_dnl.handleSyncEntry("FakeSyncPeer", "AL1" .. _dnl.COMM_FIELD_DELIM .. near_enc)
+	end
+	_dnl._drainSyncBacklogAll()
+	record("sync_enabled=true: the same entry merges into the row",
+		alpha_db[seed_cs] ~= nil and alpha_db[seed_cs] ~= seed_row and alpha_db[seed_cs].played == 3600)
+	alpha_db[seed_cs] = nil
+	alpha_db_map[seed_name] = nil
+
+	alpha_s.sync_enabled = false
+	beta_s.sync_enabled = false
+	_dnl.addons["__TestGamma__"] = { name = "__TestGamma__", tag = "GA1", isUnitTracked = dummy_fn }
+	record("anySyncEnabled: an addon without a db does not keep passive sync on",
+		_dnl._anySyncEnabled() == false)
+	_dnl.addons["__TestGamma__"].db = {}
+	_dnl.addons["__TestGamma__"].db_map = {}
+	record("anySyncEnabled: an addon with a db and no settings syncs (default on)",
+		_dnl._anySyncEnabled() == true)
+	_dnl.addons["__TestGamma__"] = nil
+	alpha_s.sync_enabled = true
+	beta_s.sync_enabled = true
 
 	-- Restore sync stats
 	_dnl._syncStats.entries_received = sync_stats_saved.entries_received

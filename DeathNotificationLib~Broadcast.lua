@@ -378,12 +378,14 @@ function _dnl.reportPartyRaidDeath(unit)
 
 	local player_name = UnitName(unit)
 	local player_guid = UnitGUID(unit)
-	if not player_name or not player_guid then return end
+	if not player_name or not player_guid or _dnl.isSecret(player_name) then return end
 
 	local _, _, race_id = UnitRace(unit)
 	local _, _, class_id = UnitClass(unit)
 	local level = UnitLevel(unit)
 	local guild = GetGuildInfo(unit)
+	if _dnl.isSecret(race_id) or _dnl.isSecret(class_id) or _dnl.isSecret(level) then return end
+	if _dnl.isSecret(guild) then guild = nil end
 
 	if not race_id or not class_id or not level or level <= 0 then
 		if _dnl.DEBUG then

@@ -256,6 +256,7 @@ handlerFrame:SetScript("OnEvent", function(self, event, ...)
 	local text = select(1, ...)
 	local sender_full = select(2, ...)
 	local senderGUID = select(12, ...)
+	if _dnl.isSecret(text) or _dnl.isSecret(sender_full) or _dnl.isSecret(senderGUID) then return end
 
 	-- Strip realm from sender name
 	local sender = sender_full and _dnl.normalize(sender_full) or sender_full

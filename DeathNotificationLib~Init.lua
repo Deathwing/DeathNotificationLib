@@ -2,7 +2,7 @@
 DeathNotificationLib~Init.lua
 --]]
 
-local VERSION = 32
+local VERSION = 33
 
 local lib = DeathNotificationLib
 if lib and lib.VERSION and (lib.VERSION >= VERSION or not lib.Shutdown) then return end
@@ -73,6 +73,18 @@ local _dnl = internal ---@class _dnl
 
 _dnl.IS_FOREVER = WOW_PROJECT_ID == WOW_PROJECT_CAMELOT
 _dnl.EXPANSION_LEVEL = _dnl.IS_FOREVER and 0 or (GetExpansionLevel and GetExpansionLevel() or 0)
+
+---@param value any
+---@return boolean
+function _dnl.isSecret(value)
+	return issecretvalue ~= nil and issecretvalue(value)
+end
+
+--- Forever blocks addon chat sends in dungeons, raids, battlegrounds and encounters.
+---@return boolean
+function _dnl.inChatLockdown()
+	return C_ChatInfo.InChatMessagingLockdown ~= nil and C_ChatInfo.InChatMessagingLockdown()
+end
 
 -- ── Auto-detect the Interface path to this library folder ────────────
 -- debugstack() returns "path/to/file.lua:line: ..." when the chunk loads.
@@ -292,6 +304,7 @@ input_frame:SetPropagateKeyboardInput(true)
 ---@field name string           Unique addon name (e.g. "Deathlog")
 ---@field tag string            Exactly 3 characters, unique (e.g. "DLG")
 ---@field isUnitTracked fun(unit: UnitToken): boolean  Should DNL broadcast deaths for this unit?
+---@field isUnitRecordedLocally (fun(unit: UnitToken): boolean)|nil  Keep this unit's untracked deaths for this addon only (SOURCE.LOCAL_SELF)
 ---@field settings DNL_Settings|nil  Per-addon SavedVariables (optional; all keys have defaults)
 ---@field db DNL_Database|nil        READ-ONLY by DNL: { [checksum] = PlayerData } for sync/query
 ---@field db_map DNL_DatabaseMap|nil READ-ONLY by DNL: { [name] = checksum } for sync/query
@@ -299,6 +312,7 @@ input_frame:SetPropagateKeyboardInput(true)
 ---@field addon_version string|nil   Semantic version string (e.g. "0.4.0") for upgrade notifications
 ---@field newest_detected_version string|nil  Newer version seen from peers
 ---@field watchlistIconProvider fun(playerName: string): string|nil Optional callback returning a watchlist icon string for a player name
+---@field syncWindowDays (fun(days: number): number)|nil  Narrows the configured sync window (never widens it)
 
 --- Registry of all attached addons, keyed by addon name.
 ---@type table<string, DNL_RegisteredAddon>
@@ -310,21 +324,20 @@ _dnl.addons = lib.State.addons
 lib.State.tag_to_addon = lib.State.tag_to_addon or {}
 _dnl.tag_to_addon = lib.State.tag_to_addon
 
---- Runtime settings consumed by DeathNotificationLib.
---- These are read as optional values from each addon's settings table;
---- defaults are applied when keys are nil.
+--- Per-addon settings. A nil key, or no table at all, means _dnl.SETTING_DEFAULTS; the library never writes them.
+--- Shared keys are on when any attached addon with a settings table resolves them on (the defaults when none has one).
 ---@class DNL_Settings
----@field peer_reporting boolean|nil Accept peer-reported deaths when true (default true)
----@field addonless_logging boolean|nil Accept Blizzard-only deaths with missing class/race when true (default false)
----@field auto_blizzard_deaths boolean|nil Auto-join/configure HardcoreDeaths channel when not false
----@field auto_hide_chat_channels boolean|nil Automatically hide addon chat channels from all chat frames when not false
----@field legacy_messages boolean|nil Accept legacy protocol messages (v0-v2) when not false
----@field share_playtime boolean|nil Include /played in hook copies (default true; set false to strip played from this addon's hooks)
----@field sync_enabled boolean|nil Enable background database sync when not false
----@field sync_window_days number|nil Sync lookback window in days (-1 = all, default 7)
----@field sync_interval number|nil Watermark broadcast interval in seconds (default 300)
----@field sync_max_entries number|nil Max entries streamed per sync session (default 500)
----@field sync_cooldown number|nil Cooldown between sync sessions in seconds (default 300)
+---@field peer_reporting boolean|nil Shared: accept deaths that other players report, live and legacy (default true)
+---@field legacy_messages boolean|nil Shared: accept v0-v2 protocol messages (default false)
+---@field addonless_logging boolean|nil Per addon: receive Blizzard-only deaths without class/race (default false)
+---@field auto_blizzard_deaths boolean|nil Shared: join HardcoreDeaths and set its CVars (default true)
+---@field auto_hide_chat_channels boolean|nil Shared: hide the library's channels from chat frames (default true)
+---@field share_playtime boolean|nil Per addon: false strips /played from this addon's copies, never from the outgoing broadcast (default true)
+---@field sync_enabled boolean|nil Per addon: sync this addon's db, including HardcoreTBC imports (default true)
+---@field sync_window_days number|nil Per addon: sync lookback window in days, -1 = all (default 7)
+---@field sync_interval number|nil Shared: watermark interval in seconds, the shortest across attached addons and never above the default (default 300)
+---@field sync_max_entries number|nil Per addon: max entries streamed per sync session (default 500)
+---@field sync_cooldown number|nil Per addon: cooldown between sync sessions in seconds (default 300)
 ---@field death_alert_priority number|nil Higher number wins when multiple addons provide settings (unset: 0 if a DeathAlert sub-table is present, else -1; ties broken by addon name)
 ---@field DeathAlert DNL_DeathAlertSettings|nil Sub-table consumed by ~DeathAlert.lua (auto-populated with defaults)
 
@@ -339,7 +352,6 @@ _dnl.tag_to_addon = lib.State.tag_to_addon
 ---@field size_y number|nil Frame height (default 200)
 ---@field style string|nil Visual style key: "boss_banner_basic_small"|"boss_banner_basic_medium"|"boss_banner_enemy_icon_small"|"boss_banner_enemy_icon_medium"|"boss_banner_enemy_icon_animated"|"text_only" (default "boss_banner_enemy_icon_medium")
 ---@field display_time number|nil Seconds to show the alert (default 6)
----@field alert_subset string|nil "faction_wide"|"guild_only" etc. (default "faction_wide")
 ---@field font string|nil Font key in shared media or built-in table (default "Nimrod MT")
 ---@field font_size number|nil Font point size (default 16)
 ---@field font_color_r number|nil Font red channel 0-1 (default 1)
@@ -356,7 +368,7 @@ _dnl.tag_to_addon = lib.State.tag_to_addon
 ---@field min_lvl number|nil Minimum victim level to show (default 1)
 ---@field min_lvl_player boolean|nil Use player level as min_lvl (default false)
 ---@field max_lvl number|nil Maximum victim level to show (default MAX_PLAYER_LEVEL)
----@field guild_only boolean|nil Only show guild member deaths (default false)
+---@field filter_mode string|nil Guild filter: "all"|"guild_only"|"guild_confederation"|"none" (default "all")
 ---@field accent_color_r number|nil Accent red channel 0-1 (default 1)
 ---@field accent_color_g number|nil Accent green channel 0-1 (default 1)
 ---@field accent_color_b number|nil Accent blue channel 0-1 (default 1)
@@ -364,7 +376,7 @@ _dnl.tag_to_addon = lib.State.tag_to_addon
 ---@field current_zone_filter boolean|nil Only show deaths in current zone (default false)
 ---@field alert_sound string|nil Sound key: "default_hardcore"|"random"|any LSM key (default "default_hardcore")
 ---@field sound_channel string|nil Audio channel for the alert sound: "Master"|"SFX"|"Ambience"|"Music"|"Dialog" (default "Master")
----@field death_alert_options_parent string|nil Blizzard settings parent category name for the DeathAlert options panel (default "Deathlog")
+---@field death_alert_options_parent string|nil Blizzard settings parent category name for the DeathAlert options panel (default "DeathNotificationLib")
 ---@field alertFilter fun(entry: PlayerData): boolean|nil Optional per-entry veto; return true to suppress the alert. Only the alert-owning addon's filter is consulted.
 
 --- Persistent death entry stored by checksum.
@@ -385,18 +397,42 @@ _dnl.tag_to_addon = lib.State.tag_to_addon
 -- Settings helpers (per-addon)
 ---------------------------------------------------------------------------
 
---- For settings with default-false (opt-in) semantics:
---- Returns true if ANY registered addon has explicitly set key to a truthy value.
---- Examples: addonless_logging.
+_dnl.SETTING_DEFAULTS = {
+	peer_reporting          = true,
+	legacy_messages         = false,
+	addonless_logging       = false,
+	share_playtime          = true,
+	auto_blizzard_deaths    = true,
+	auto_hide_chat_channels = true,
+	sync_enabled            = true,
+	sync_window_days        = 7,
+	sync_interval           = 300,
+	sync_max_entries        = 500,
+	sync_cooldown           = 300,
+}
+
+--- One addon's value for key, or the default when it is nil.
+---@param settings DNL_Settings|nil
+---@param key string
+---@return any
+function _dnl.getSetting(settings, key)
+	local value = settings and settings[key]
+	if value == nil then return _dnl.SETTING_DEFAULTS[key] end
+	return value
+end
+
+--- True when any attached addon with a settings table resolves key on; the default when none has one.
 ---@param key string
 ---@return boolean
 function _dnl.anyAddonEnables(key)
+	local found = false
 	for _, addon in pairs(_dnl.addons) do
-		if addon.settings and addon.settings[key] then
-			return true
+		if addon.settings then
+			if _dnl.getSetting(addon.settings, key) then return true end
+			found = true
 		end
 	end
-	return false
+	return not found and _dnl.SETTING_DEFAULTS[key] == true
 end
 
 --- Return the settings table and addon name from the addon with the highest death_alert_priority.

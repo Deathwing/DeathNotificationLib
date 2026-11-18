@@ -126,7 +126,7 @@ DNL ships with locale-aware lookup tables exposed on the `DeathNotificationLib` 
 | `HookOnNewAddonEntrySecure(name, fn)` | Per-addon verified hook |
 | `GetDeathRecord(name)` | Look up a cached death record by player name |
 | `CreateFakeEntry()` | Generate a fake death entry (useful for UI testing) |
-| `PlayDeathAlert(player_data)` | Programmatically trigger the death alert popup |
+| `PlayDeathAlert(player_data, reported_by)` | Programmatically trigger the death alert popup; `reported_by` (optional) fills the `<reported_by>` tag |
 | `TestDeathAlert()` | Fire a test alert with a fake entry |
 | `UpdateDeathAlert()` | Re-apply death alert settings after config changes |
 | `FormatPlaytime(seconds)` | Format a `/played` duration as a human-readable string |
